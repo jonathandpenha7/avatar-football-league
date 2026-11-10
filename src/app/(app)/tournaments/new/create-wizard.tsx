@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAction } from "@/hooks/use-action";
 import { createTournament } from "@/lib/actions/tournaments";
 import { FORMAT_LABELS } from "@/lib/domain";
-import { TIEBREAKER_LABELS } from "@/lib/engine";
+import { TIEBREAKER_LABELS, roundRobinMatchCount } from "@/lib/engine";
 import type { TournamentFormat } from "@/lib/engine/types";
 import {
   DEFAULT_SETTINGS,
@@ -205,13 +205,33 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
                 <Summary label="Date" value={general.start_date ?? "Not set"} />
                 <Summary label="Playing window" value={`${general.daily_start_time ?? "?"} to ${general.daily_end_time ?? "?"}`} />
                 <Summary label="Format" value={FORMAT_LABELS[format]} />
+                {format === "round_robin" || format === "league_playoff" || format === "group_knockout" ? (
+                  <Summary
+                    label="League"
+                    value={
+                      settings.double_round_robin
+                        ? `Double round robin: every pair plays twice (${roundRobinMatchCount(settings.team_count, true)} matches)`
+                        : `Single round robin: every pair plays once (${roundRobinMatchCount(settings.team_count)} matches)`
+                    }
+                  />
+                ) : null}
                 <Summary label="Teams" value={`${settings.team_count} (max ${settings.max_squad_size} per squad, ${settings.players_on_pitch} on the pitch)`} />
                 <Summary label="Points" value={`Win ${settings.points_win}, draw ${settings.points_draw}, loss ${settings.points_loss}`} />
                 <Summary
                   label="Tie-breakers"
                   value={`${settings.tiebreakers.map((t) => TIEBREAKER_LABELS[t]).join(", ") || "None"}${settings.tiebreakers_confirmed ? "" : " (not confirmed)"}`}
                 />
-                <Summary label="Match duration" value={settings.match_duration_min ? `${settings.match_duration_min} min` : "Not decided"} />
+                <Summary label="League matches" value={timingText(settings.match_duration_min, settings.half_time_min, settings.periods, settings.transition_min)} />
+                {format !== "round_robin" ? (
+                  <Summary
+                    label="Knockout matches"
+                    value={
+                      settings.knockout_match_duration_min
+                        ? timingText(settings.knockout_match_duration_min, settings.knockout_half_time_min ?? settings.half_time_min, settings.periods, settings.transition_min)
+                        : "Same as league matches"
+                    }
+                  />
+                ) : null}
                 <Summary label="Pitches" value={pitches.map((p) => p.name).join(", ")} />
                 <Summary
                   label="Red card suspension"
@@ -252,4 +272,10 @@ function Summary({ label, value }: { label: string; value: string }) {
       <dd className="font-medium">{value}</dd>
     </div>
   );
+}
+
+function timingText(total: number | null, halfTime: number, periods: 1 | 2, changeover: number | null) {
+  if (total === null) return "Not decided";
+  const play = periods === 2 ? `${total / 2} + ${halfTime} + ${total / 2} min` : `${total} min`;
+  return changeover === null ? `${play}, changeover not decided` : `${play}, then ${changeover} min changeover`;
 }
