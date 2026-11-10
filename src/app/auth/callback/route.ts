@@ -17,7 +17,10 @@ export async function GET(request: NextRequest) {
   } else if (tokenHash && type) {
     ({ error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: type as "email" | "invite" | "recovery" | "magiclink" | "signup" }));
   } else {
-    error = { message: "Missing sign-in code." };
+    // Default Supabase emails (e.g. invitations) put the session in the URL fragment,
+    // which never reaches the server. Browsers keep the fragment across redirects,
+    // so a client page can finish the sign-in.
+    return NextResponse.redirect(new URL(`/auth/complete?next=${encodeURIComponent(next)}`, url.origin));
   }
   if (error) {
     return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error.message)}`, url.origin));

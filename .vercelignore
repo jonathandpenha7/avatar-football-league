@@ -1,0 +1,7 @@
+*.pdf
+.env*
+!.env.example
+node_modules
+.next
+tests
+scripts
