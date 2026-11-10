@@ -22,6 +22,8 @@ export interface DayWindow {
   date: string;
   start: number;
   end: number;
+  /** Index of the day in the tournament (set internally when a window is trimmed). */
+  dayIndex?: number;
 }
 
 export interface TimingConfig {
@@ -80,6 +82,8 @@ export interface ScheduleInput {
   fixtures: PlannedFixture[];
   days: DayWindow[];
   timing: TimingConfig;
+  /** Timing for knockout matches when it differs from league matches. */
+  knockoutTiming?: TimingConfig;
   pitches: SchedulePitch[];
   blocked?: BlockedPeriod[];
   /** Extra gap between the end of the league/group phase and the knockouts. */
@@ -127,7 +131,7 @@ export function buildSlots(
         .filter((p) => !dayBlocks.some((b) => b.pitchId === p.id && overlaps(t, t + occ, b.start, b.end)))
         .map((p) => p.id);
       if (pitchIds.length > 0) {
-        slots.push({ index: slots.length, date: day.date, dayIndex, start: t, end: t + occ, pitchIds });
+        slots.push({ index: slots.length, date: day.date, dayIndex: day.dayIndex ?? dayIndex, start: t, end: t + occ, pitchIds });
       }
       t += step;
     }
@@ -411,7 +415,8 @@ function cost(r: ScheduleResult): number {
  */
 export function scheduleFixtures(input: ScheduleInput): ScheduleResult {
   const blocked = input.blocked ?? [];
-  const slots = buildSlots(input.days, input.timing, input.pitches, blocked);
+  const leagueSlots = buildSlots(input.days, input.timing, input.pitches, blocked);
+  const koTiming = input.knockoutTiming ?? input.timing;
   const groupPhase = input.fixtures.filter((f) => f.stage !== "knockout");
   const knockouts = input.fixtures.filter((f) => f.stage === "knockout");
   for (const f of groupPhase) {
@@ -419,16 +424,29 @@ export function scheduleFixtures(input: ScheduleInput): ScheduleResult {
   }
   const attempts = Math.max(1, input.attempts ?? 60);
   const rng = mulberry32(input.seed ?? 20261110);
+  const breakMin = input.knockoutBreakMin ?? 0;
 
   let best: ScheduleResult | null = null;
   for (let i = 0; i < attempts; i++) {
-    const { placed, unscheduled } = scheduleGroupPhase(groupPhase, slots, input.timing, rng, i === 0 ? 0 : 12);
-    const groupPhaseEnd = groupPhase.length
-      ? Math.max(...[...placed.values()].map((p) => p.slot.dayIndex * 1440 + p.slot.end), -Infinity)
-      : null;
+    const { placed, unscheduled } = scheduleGroupPhase(groupPhase, leagueSlots, input.timing, rng, i === 0 ? 0 : 12);
+    let groupPhaseEnd: number | null = null;
+    for (const p of placed.values()) groupPhaseEnd = Math.max(groupPhaseEnd ?? -Infinity, abs(p.slot) + (p.slot.end - p.slot.start));
+
+    // Knockout matches get their own slot grid (they may be longer), starting after the
+    // league phase plus the changeover and any configured break.
+    let koDays: DayWindow[] = input.days.map((d, dayIndex) => ({ ...d, dayIndex }));
+    if (groupPhaseEnd !== null) {
+      const from = groupPhaseEnd + input.timing.transitionMin + breakMin;
+      koDays = koDays
+        .filter((d) => d.dayIndex! * 1440 + d.end > from)
+        .map((d) => ({ ...d, start: Math.max(d.start, from - d.dayIndex! * 1440) }));
+    }
+    const koSlots = buildSlots(koDays, koTiming, input.pitches, blocked).map((sl, j) => ({ ...sl, index: leagueSlots.length + j }));
+    const slots: Slot[] = [...leagueSlots, ...koSlots];
+
     const koUnscheduled = unscheduled.length
       ? knockouts.map((k) => k.code)
-      : scheduleKnockouts(knockouts, slots, placed, groupPhaseEnd === -Infinity ? null : groupPhaseEnd, input.knockoutBreakMin ?? 0);
+      : scheduleKnockouts(knockouts, koSlots, placed, groupPhaseEnd, breakMin);
     const result = evaluate(input.fixtures, placed, [...unscheduled, ...koUnscheduled], slots, input.timing);
     if (!best || cost(result) < cost(best)) best = result;
     if (groupPhase.length === 0) break; // knockouts alone are deterministic

@@ -34,9 +34,9 @@ describe("Avatar Football League end to end", () => {
         timezone: "Asia/Kolkata", status: "draft",
       },
       format: t.format,
-      settings: { ...DEFAULT_SETTINGS, ...t.settings, team_count: 7 },
+      settings: { ...DEFAULT_SETTINGS, ...t.settings, team_count: 6 },
       pitches: t.pitches.map((name) => ({ name, available_from: null, available_until: null })),
-      teamNames: Array.from({ length: 7 }, (_, i) => `Team ${i + 1}`),
+      teamNames: Array.from({ length: 6 }, (_, i) => `Team ${i + 1}`),
       templateKey: t.key,
     };
     const parsed = createTournamentSchema.safeParse(payload);
@@ -56,31 +56,33 @@ describe("Avatar Football League end to end", () => {
     tid = id;
     const [s] = await q<TournamentSettings>("select * from public.tournament_settings where tournament_id = $1", [tid]);
     // Unresolved items stay unresolved.
-    expect(s.match_duration_min).toBeNull();
-    expect(s.transition_min).toBeNull();
+    // Timings given by the organisers: league 7 + 2 + 7, knockouts 10 + 2 + 10, 5-minute changeover.
+    expect([s.periods, s.match_duration_min, s.half_time_min, s.transition_min]).toEqual([2, 14, 2, 5]);
+    expect([s.knockout_match_duration_min, s.knockout_half_time_min, s.third_place_match]).toEqual([20, 2, true]);
     expect(s.red_card_suspension_matches).toBeNull();
     expect(s.tiebreakers_confirmed).toBe(false);
     expect(s.max_squad_size).toBe(6);
     expect(s.players_on_pitch).toBe(5);
     expect(s.qualifiers).toBe(4);
     const decisions = await q<{ key: string; status: string }>("select key, status from public.tournament_decisions where tournament_id = $1", [tid]);
-    expect(decisions.map((d) => d.key)).toEqual(expect.arrayContaining(["gk_handball_outside_area", "kick_in_distance", "corner_direct_goal", "match_duration", "tiebreaker_order", "suspension_rules"]));
+    expect(decisions.map((d) => d.key)).toEqual(expect.arrayContaining(["gk_handball_outside_area", "kick_in_distance", "corner_direct_goal", "tiebreaker_order", "suspension_rules"]));
     expect(decisions.every((d) => d.status === "open")).toBe(true);
-    expect((await q("select * from public.teams where tournament_id = $1", [tid])).length).toBe(7);
+    expect((await q("select * from public.teams where tournament_id = $1", [tid])).length).toBe(6);
   });
 
-  it("generates and schedules 21 league matches plus semis and final in the 5 PM to 9 PM window", async () => {
+  it("schedules 15 league matches (7 + 2 + 7), semis, third place and final (10 + 2 + 10) between 5 PM and 9 PM", async () => {
     // Organisers decide timings (simulated), then generate.
-    await db.query("update public.tournament_settings set match_duration_min = 12, transition_min = 3, tiebreakers_confirmed = true where tournament_id = $1", [tid]);
+    await db.query("update public.tournament_settings set tiebreakers_confirmed = true where tournament_id = $1", [tid]);
     const [t] = await q<Tournament>("select * from public.tournaments where id = $1", [tid]);
     const [s] = await q<TournamentSettings>("select * from public.tournament_settings where tournament_id = $1", [tid]);
     const teams = await q<Team>("select * from public.teams where tournament_id = $1 order by seed", [tid]);
     const pitches = await q<{ id: string; name: string }>("select id, name from public.pitches where tournament_id = $1 order by sort_order", [tid]);
-    const plan = planTournament(teams.map((x) => ({ id: x.id, name: x.name, seed: x.seed })), { format: t.format, qualifiers: s.qualifiers });
+    const plan = planTournament(teams.map((x) => ({ id: x.id, name: x.name, seed: x.seed })), { format: t.format, qualifiers: s.qualifiers, thirdPlaceMatch: s.third_place_match });
     const result = scheduleFixtures({
       fixtures: plan.fixtures,
       days: playingDays(t),
       timing: { matchMin: s.match_duration_min!, transitionMin: s.transition_min!, periods: s.periods, halfTimeMin: s.half_time_min },
+      knockoutTiming: { matchMin: s.knockout_match_duration_min!, transitionMin: s.transition_min!, periods: s.periods, halfTimeMin: s.knockout_half_time_min! },
       pitches,
       blocked: blockedPeriods(s),
     });
@@ -89,17 +91,21 @@ describe("Avatar Football League end to end", () => {
     const rows = plan.fixtures.map((f) => ({
       code: f.code, stage: f.stage, round_number: f.roundNumber, round_name: f.roundName, match_order: at.get(f.code)!.order,
       home_team_id: f.homeTeamId, away_team_id: f.awayTeamId, home_source: f.homeSource, away_source: f.awaySource,
-      pitch_id: at.get(f.code)!.pitchId, scheduled_date: at.get(f.code)!.date, scheduled_time: fromMinutes(at.get(f.code)!.start), duration_min: 12,
+      pitch_id: at.get(f.code)!.pitchId, scheduled_date: at.get(f.code)!.date, scheduled_time: fromMinutes(at.get(f.code)!.start), duration_min: at.get(f.code)!.end - at.get(f.code)!.start,
     }));
     const [{ n }] = await q<{ n: number }>("select public.replace_fixtures($1, 'all', $2::jsonb) as n", [tid, JSON.stringify(rows)]);
-    expect(n).toBe(24);
+    expect(n).toBe(19); // 15 league + 2 semis + third place + final
+    const last = Math.max(...result.assignments.map((a) => a.end));
+    expect(last).toBeLessThanOrEqual(21 * 60);
+    const sf = result.assignments.find((a) => a.code === "SF1")!;
+    expect(sf.end - sf.start).toBe(22); // 10 + 2 + 10
     const first = await q<{ scheduled_time: string }>("select scheduled_time from public.fixtures where tournament_id = $1 order by scheduled_time limit 1", [tid]);
     expect(first[0].scheduled_time).toBe("17:10:00"); // after the rules announcement block
   });
 
   it("plays and confirms the league, then seeds 1st v 4th and 2nd v 3rd", async () => {
     const teams = await q<Team>("select * from public.teams where tournament_id = $1 order by seed", [tid]);
-    const strength = new Map(teams.map((x, i) => [x.id, 7 - i])); // Team 1 strongest
+    const strength = new Map(teams.map((x, i) => [x.id, 6 - i])); // Team 1 strongest
     const league = await q<Fixture>("select * from public.fixtures where tournament_id = $1 and stage = 'league' order by match_order", [tid]);
     for (const f of league) {
       const hs = strength.get(f.home_team_id!)!;
@@ -117,7 +123,7 @@ describe("Avatar Football League end to end", () => {
     const fixtures = await q<Fixture>("select * from public.fixtures where tournament_id = $1", [tid]);
     const events = await q<MatchEvent>("select * from public.match_events where tournament_id = $1", [tid]);
     const standings = standingsFor(s, teams, fixtures, events, [], { stage: "league" });
-    expect(standings.rows.every((r) => r.played === 6)).toBe(true);
+    expect(standings.rows.every((r) => r.played === 5)).toBe(true);
     const q4 = evaluateQualification({ standings, qualifiers: 4, complete: true, sourcePrefix: "league" });
     expect(q4.blockers).toEqual([]);
     await db.query("select public.assign_knockout_teams($1, $2::jsonb, false)", [tid, JSON.stringify(q4.assignments.map((a) => ({ source: a.source, team_id: a.teamId })))]);

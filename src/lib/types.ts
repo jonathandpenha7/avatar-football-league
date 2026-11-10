@@ -79,6 +79,8 @@ export interface TournamentSettings {
   match_duration_min: number | null;
   periods: 1 | 2;
   half_time_min: number;
+  knockout_match_duration_min: number | null;
+  knockout_half_time_min: number | null;
   transition_min: number | null;
   extra_time_enabled: boolean;
   extra_time_min: number | null;

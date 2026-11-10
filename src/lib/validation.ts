@@ -84,6 +84,8 @@ export const settingsSchema = z
     match_duration_min: optionalInt(1, 240),
     periods: z.union([z.literal(1), z.literal(2)]),
     half_time_min: z.number().int().min(0).max(60),
+    knockout_match_duration_min: optionalInt(1, 240),
+    knockout_half_time_min: optionalInt(0, 60),
     transition_min: optionalInt(0, 120),
     extra_time_enabled: z.boolean(),
     extra_time_min: optionalInt(1, 60),

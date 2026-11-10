@@ -21,6 +21,9 @@ export interface FeasibilityInput {
   periods?: 1 | 2;
   halfTimeMin?: number;
   transitionMin: number | null;
+  /** Knockout match length (all periods); null/undefined = same as league. */
+  knockoutMatchMin?: number | null;
+  knockoutHalfTimeMin?: number | null;
   pitches: SchedulePitch[];
   blocked?: BlockedPeriod[];
   knockoutBreakMin?: number;
@@ -40,6 +43,8 @@ export interface FeasibilityReport {
   availablePitchSlots: number;
   minimumSlots: number;
   minutesPerSlot: number | null;
+  /** Shortest possible total playing time (first kick-off to last final whistle). */
+  minimumMinutes: number | null;
   /** Largest whole-minute match length that still fits (with the configured transition). */
   maxMatchMinutes: number | null;
   result: ScheduleResult | null;
@@ -60,6 +65,27 @@ function placeholderTeams(input: FeasibilityInput): PlanTeam[] {
   return teams;
 }
 
+function koTimingOf(input: FeasibilityInput, transitionMin: number): TimingConfig | undefined {
+  if (!input.knockoutMatchMin) return undefined;
+  return {
+    matchMin: input.knockoutMatchMin,
+    periods: input.periods ?? 1,
+    halfTimeMin: input.knockoutHalfTimeMin ?? input.halfTimeMin ?? 0,
+    transitionMin,
+  };
+}
+
+/** Shortest possible time from first kick-off to the last final whistle. */
+export function minimumMinutes(fixtures: PlannedFixture[], pitchCount: number, league: TimingConfig, knockout?: TimingConfig): number {
+  const groupOnly = fixtures.filter((f) => f.stage !== "knockout");
+  const koOnly = fixtures.filter((f) => f.stage === "knockout");
+  const g = minimumSlots(groupOnly, pitchCount);
+  const k = minimumSlots(koOnly, pitchCount);
+  const ko = knockout ?? league;
+  const total = g * slotStep(league) + k * slotStep(ko);
+  return Math.max(0, total - (k ? ko.transitionMin : g ? league.transitionMin : 0));
+}
+
 function trySchedule(
   fixtures: PlannedFixture[],
   input: FeasibilityInput,
@@ -76,6 +102,7 @@ function trySchedule(
     fixtures,
     days: overrides.days ?? input.days,
     timing,
+    knockoutTiming: koTimingOf(input, timing.transitionMin),
     pitches: overrides.pitches ?? input.pitches,
     blocked: input.blocked,
     knockoutBreakMin: input.knockoutBreakMin,
@@ -128,6 +155,7 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
     availablePitchSlots: 0,
     minimumSlots: minSlots,
     minutesPerSlot: null,
+    minimumMinutes: null,
     maxMatchMinutes: null,
     result: null,
     suggestions: [],
@@ -143,7 +171,7 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
     base.suggestions.push(
       max === null
         ? "Even 1-minute matches do not fit. Add pitches or extend the tournament window."
-        : `With ${input.pitches.length} pitch(es)${input.transitionMin === null ? " and no transition time" : ` and ${input.transitionMin}-minute transitions`}, each match can be at most ${max} minutes long (including any half-time).`,
+        : `Set the match length and changeover to check the schedule. For reference: on ${input.pitches.length} pitch${input.pitches.length === 1 ? "" : "es"}${input.transitionMin === null ? " with no changeover" : ` with a ${input.transitionMin}-minute changeover`}, league matches could last up to ${max} minutes of play.`,
     );
     return base;
   }
@@ -155,10 +183,12 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
     transitionMin: input.transitionMin,
   };
   const slots = buildSlots(input.days, timing, input.pitches, input.blocked ?? []);
+  const koTiming = koTimingOf(input, input.transitionMin);
   const result = scheduleFixtures({
     fixtures,
     days: input.days,
     timing,
+    knockoutTiming: koTiming,
     pitches: input.pitches,
     blocked: input.blocked,
     knockoutBreakMin: input.knockoutBreakMin,
@@ -170,6 +200,7 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
     availableSlots: slots.length,
     availablePitchSlots: slots.reduce((s, sl) => s + sl.pitchIds.length, 0),
     minutesPerSlot: slotStep(timing),
+    minimumMinutes: minimumMinutes(fixtures, input.pitches.length, timing, koTiming),
     result,
   };
 
@@ -188,15 +219,24 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
   // Infeasible: work out concrete adjustments.
   const s: string[] = [];
   s.push(
-    `${result.unscheduled.length} of ${fixtures.length} matches do not fit. The format needs at least ${minSlots} time slots; the window provides ${slots.length}.`,
+    `${result.unscheduled.length} of ${fixtures.length} matches do not fit. Playing everything takes at least ${formatDuration(report.minimumMinutes ?? 0)}, but the playing window is ${formatDuration(windowMinutes)}${(input.blocked ?? []).length ? " (before blocked periods)" : ""}.`,
   );
-  const maxLen = findMaxMatchMinutes(fixtures, input, input.matchMin);
+  const rawMax = findMaxMatchMinutes(fixtures, input, input.matchMin);
+  const halves = (input.periods ?? 1) === 2;
+  // With two halves, suggest whole minutes per half (e.g. 4 + 4, not 9).
+  const maxLen = rawMax !== null && halves ? Math.floor(rawMax / 2) * 2 : rawMax;
   report.maxMatchMinutes = maxLen;
-  if (maxLen !== null) s.push(`Shorten matches to ${maxLen} minutes or less (currently ${input.matchMin}).`);
+  if (maxLen) {
+    s.push(
+      halves
+        ? `Shorten league matches to ${maxLen / 2} + ${input.halfTimeMin ?? 0} + ${maxLen / 2} minutes or less (currently ${input.matchMin / 2} + ${input.halfTimeMin ?? 0} + ${input.matchMin / 2}).`
+        : `Shorten league matches to ${maxLen} minutes or less (currently ${input.matchMin}).`,
+    );
+  }
   if (input.transitionMin > 0) {
     for (let tr = input.transitionMin - 1; tr >= 0; tr--) {
       if (trySchedule(fixtures, input, { transitionMin: tr }).feasible) {
-        s.push(`Reduce the transition time to ${tr} minutes.`);
+        s.push(`Reduce the changeover between matches to ${tr} minutes.`);
         break;
       }
     }
@@ -220,6 +260,10 @@ export function assessFeasibility(input: FeasibilityInput): FeasibilityReport {
     }
   }
   if (input.format.doubleRoundRobin) s.push("Switch to a single round robin.");
+  if (input.format.thirdPlaceMatch) {
+    const without = planTournament(placeholderTeams(input), { ...input.format, thirdPlaceMatch: false }).fixtures;
+    if (trySchedule(without, input, {}).feasible) s.push("Drop the third-place play-off.");
+  }
   report.suggestions = s;
   return report;
 }

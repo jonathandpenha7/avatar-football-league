@@ -179,7 +179,7 @@ describe("feasibility", () => {
   it("flags an impossible plan and suggests concrete fixes", () => {
     const r = assessFeasibility({ ...base, teamCount: 7, matchMin: 20, transitionMin: 5 });
     expect(r.status).toBe("infeasible");
-    expect(r.suggestions.some((s) => /Shorten matches to \d+ minutes/.test(s))).toBe(true);
+    expect(r.suggestions.some((s) => /Shorten league matches to \d+ minutes/.test(s))).toBe(true);
     expect(r.suggestions.some((s) => /Add \d+ more pitch/.test(s))).toBe(true);
     expect(r.suggestions.some((s) => /Extend the tournament window/.test(s))).toBe(true);
     // The suggested maximum must itself be feasible
@@ -221,5 +221,38 @@ describe("conflict detection", () => {
     expect(conflicts).toHaveLength(1);
     expect(conflicts[0].kind).toBe("back_to_back");
     expect(conflicts[0].severity).toBe("warning");
+  });
+});
+
+describe("separate knockout timing (Avatar: league 7 + 2 + 7, knockouts 10 + 2 + 10, 5-minute changeover)", () => {
+  const league = { matchMin: 14, periods: 2 as const, halfTimeMin: 2, transitionMin: 5 };
+  const knockout = { matchMin: 20, periods: 2 as const, halfTimeMin: 2, transitionMin: 5 };
+
+  it("gives knockout matches their own length and starts them after the last league match plus the changeover", () => {
+    const plan = planTournament(makeTeams(6), { format: "league_playoff", qualifiers: 4, thirdPlaceMatch: true });
+    const r = scheduleFixtures({ fixtures: plan.fixtures, days: avatarDay, timing: league, knockoutTiming: knockout, pitches, blocked: announcement });
+    expect(r.feasible).toBe(true);
+    const leagueEnd = Math.max(...r.assignments.filter((a) => a.code.startsWith("L")).map((a) => a.end));
+    const at = (c: string) => r.assignments.find((a) => a.code === c)!;
+    expect(at("L1").end - at("L1").start).toBe(16);
+    expect(at("SF1").end - at("SF1").start).toBe(22);
+    expect(at("SF1").start).toBe(leagueEnd + 5);
+    expect(at("SF1").start).toBe(at("SF2").start);
+    expect(at("F").start).toBe(at("SF1").end + 5);
+    expect(at("F").start).toBe(at("P3").start); // final and third place side by side
+    expect(r.metrics.endMinute!).toBeLessThanOrEqual(21 * 60);
+  });
+
+  it("reports that 7 teams do not fit between 5 PM and 9 PM, with whole-minute halves in the suggestion", () => {
+    const r = assessFeasibility({
+      teamCount: 7,
+      format: { format: "league_playoff", qualifiers: 4, thirdPlaceMatch: true },
+      days: avatarDay, pitches, blocked: announcement,
+      matchMin: 14, periods: 2, halfTimeMin: 2, transitionMin: 5, knockoutMatchMin: 20, knockoutHalfTimeMin: 2,
+    });
+    expect(r.status).toBe("infeasible");
+    expect(r.minimumMinutes).toBeGreaterThan(240);
+    expect(r.suggestions.some((s) => /Shorten league matches to \d+ \+ 2 \+ \d+ minutes/.test(s))).toBe(true);
+    expect(r.maxMatchMinutes! % 2).toBe(0);
   });
 });

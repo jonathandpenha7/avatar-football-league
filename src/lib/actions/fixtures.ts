@@ -58,6 +58,14 @@ export async function generateFixtures(
         halfTimeMin: ctx.settings.half_time_min,
         transitionMin: ctx.settings.transition_min,
       },
+      knockoutTiming: ctx.settings.knockout_match_duration_min
+        ? {
+            matchMin: ctx.settings.knockout_match_duration_min,
+            periods: ctx.settings.periods,
+            halfTimeMin: ctx.settings.knockout_half_time_min ?? ctx.settings.half_time_min,
+            transitionMin: ctx.settings.transition_min,
+          }
+        : undefined,
       pitches: pitches.map((p) => ({ id: p.id, name: p.name, availableFrom: toMin(p.available_from), availableUntil: toMin(p.available_until) })),
       blocked: blockedPeriods(ctx.settings),
       knockoutBreakMin: ctx.settings.knockout_break_min,
@@ -89,7 +97,7 @@ export async function generateFixtures(
       pitch_id: p?.pitchId ?? null,
       scheduled_date: p?.date ?? null,
       scheduled_time: p ? fromMinutes(p.start) : null,
-      duration_min: duration,
+      duration_min: occupiedFor(ctx.settings, f.stage) ?? duration,
     };
   });
   const { data, error } = await ctx.supabase.rpc("replace_fixtures", {

@@ -6,7 +6,7 @@ import { RealtimeRefresher } from "@/components/app/realtime-refresher";
 import { getTournamentContext } from "@/lib/data/session";
 import { getFixtures, getMembers, getOfficials, getPitches, getPlayers, getSuspensions, getTeams } from "@/lib/data/loaders";
 import { preMatchAlerts } from "@/lib/engine";
-import { toDisciplineFixture } from "@/lib/domain";
+import { playingMinutes, toDisciplineFixture } from "@/lib/domain";
 import type { MatchEvent } from "@/lib/types";
 import { Scoreboard } from "./scoreboard";
 
@@ -83,7 +83,7 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
         alerts={alerts}
         settings={{
           periods: ctx.settings.periods,
-          matchDurationMin: ctx.settings.match_duration_min,
+          matchDurationMin: playingMinutes(ctx.settings, fixture.stage),
           extraTime: ctx.settings.extra_time_enabled,
           shootoutKicks: ctx.settings.shootout_kicks,
           forfeitGoals: ctx.settings.forfeit_goals,

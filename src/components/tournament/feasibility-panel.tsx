@@ -49,6 +49,8 @@ export function FeasibilityPanel({ draft, compact }: { draft: FeasibilityDraft; 
       matchMin: settings.match_duration_min,
       periods: settings.periods,
       halfTimeMin: settings.half_time_min,
+      knockoutMatchMin: settings.knockout_match_duration_min,
+      knockoutHalfTimeMin: settings.knockout_half_time_min,
       transitionMin: settings.transition_min,
       pitches: pitchList,
       blocked: settings.blocked_periods.map((b) => ({
@@ -67,7 +69,7 @@ export function FeasibilityPanel({ draft, compact }: { draft: FeasibilityDraft; 
       ? { icon: CircleCheck, title: "The schedule fits", cls: "border-success/40 bg-success/5 [&>svg]:text-success" }
       : report.status === "infeasible"
         ? { icon: CircleAlert, title: "The schedule does not fit", cls: "border-destructive/40 bg-destructive/5 [&>svg]:text-destructive" }
-        : { icon: CircleHelp, title: "Not enough information to schedule yet", cls: "border-warning/50 bg-warning/5 [&>svg]:text-amber-600" };
+        : { icon: CircleHelp, title: "Add the match timings to check the schedule", cls: "border-warning/50 bg-warning/5 [&>svg]:text-amber-600" };
   const Icon = tone.icon;
 
   return (
@@ -84,10 +86,10 @@ export function FeasibilityPanel({ draft, compact }: { draft: FeasibilityDraft; 
             {report.knockoutMatches ? (
               <span className="text-muted-foreground">({report.groupPhaseMatches} league or group, {report.knockoutMatches} knockout)</span>
             ) : null}
-            {report.windowMinutes ? <span><Clock className="mr-1 inline size-3.5" />{formatDuration(report.windowMinutes)} window</span> : null}
-            {report.status !== "incomplete" ? (
+            {report.windowMinutes ? <span><Clock className="mr-1 inline size-3.5" />{formatDuration(report.windowMinutes)} available</span> : null}
+            {report.status !== "incomplete" && report.minimumMinutes !== null ? (
               <span>
-                needs at least <strong className="tabular">{report.minimumSlots}</strong> time slots, {report.availableSlots} available
+                needs at least <strong className="tabular">{formatDuration(report.minimumMinutes)}</strong> of playing time
               </span>
             ) : null}
           </div>
@@ -112,7 +114,7 @@ export function FeasibilityPanel({ draft, compact }: { draft: FeasibilityDraft; 
             </ul>
           ) : null}
           {report.status === "feasible" && report.maxMatchMinutes ? (
-            <p className="text-muted-foreground">Longest match length that still fits: {report.maxMatchMinutes} minutes.</p>
+            <p className="text-muted-foreground">League matches could be up to {report.maxMatchMinutes} minutes of play and still fit.</p>
           ) : null}
         </div>
       </AlertDescription>

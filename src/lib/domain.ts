@@ -29,6 +29,14 @@ export const FORMAT_LABELS: Record<Tournament["format"], string> = {
   group_knockout: "Group stage then knockout",
 };
 
+export const FORMAT_DESCRIPTIONS: Record<Tournament["format"], string> = {
+  round_robin: "Every team plays every other team once. The team top of the table wins. No semi-finals or final.",
+  league_playoff: "Every team plays every other team once, then the top teams play semi-finals (1st v 4th, 2nd v 3rd) and a final. This is the Avatar Football League format.",
+  single_elimination: "Knockout from the first match: lose once and you are out.",
+  double_elimination: "Knockout where a team is only out after losing twice.",
+  group_knockout: "Teams are split into groups that each play a mini-league, then the top teams from each group go into a knockout.",
+};
+
 export const STATUS_LABELS: Record<TournamentStatus, string> = {
   draft: "Draft",
   registration_open: "Registration open",
@@ -77,13 +85,22 @@ export const RULE_CATEGORY_LABELS: Record<string, string> = {
 export const LIVE_STATUSES: FixtureStatus[] = ["in_progress", "paused"];
 
 /** Minutes a pitch is occupied by a match, per tournament settings. */
-export function occupiedFor(settings: TournamentSettings): number | null {
+export function occupiedFor(settings: TournamentSettings, stage: Fixture["stage"] = "league"): number | null {
+  if (stage === "knockout" && settings.knockout_match_duration_min) {
+    const ht = settings.knockout_half_time_min ?? settings.half_time_min;
+    return settings.knockout_match_duration_min + (settings.periods === 2 ? ht : 0);
+  }
   if (!settings.match_duration_min) return null;
   return settings.match_duration_min + (settings.periods === 2 ? settings.half_time_min : 0);
 }
 
+/** Playing time (without half-time) for a stage. */
+export function playingMinutes(settings: TournamentSettings, stage: Fixture["stage"]): number | null {
+  return stage === "knockout" && settings.knockout_match_duration_min ? settings.knockout_match_duration_min : settings.match_duration_min;
+}
+
 export function fixtureDuration(f: Fixture, settings: TournamentSettings): number {
-  return f.duration_min ?? occupiedFor(settings) ?? 0;
+  return f.duration_min ?? occupiedFor(settings, f.stage) ?? 0;
 }
 
 /** Daily playing windows derived from tournament dates and times. */

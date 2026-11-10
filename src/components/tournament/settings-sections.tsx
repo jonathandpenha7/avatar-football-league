@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Field, NativeSelect } from "@/components/app/field";
-import { FORMAT_LABELS, STATUS_LABELS } from "@/lib/domain";
+import { FORMAT_DESCRIPTIONS, FORMAT_LABELS, STATUS_LABELS } from "@/lib/domain";
 import { TIEBREAKER_LABELS, roundRobinMatchCount } from "@/lib/engine";
 import type { Tiebreaker, TournamentFormat } from "@/lib/engine/types";
 import type { BlockedPeriodRow, TournamentSettings, TournamentStatus } from "@/lib/types";
@@ -59,6 +59,8 @@ export const DEFAULT_SETTINGS: SettingsDraft = {
   match_duration_min: null,
   periods: 1,
   half_time_min: 0,
+  knockout_match_duration_min: null,
+  knockout_half_time_min: null,
   transition_min: null,
   extra_time_enabled: false,
   extra_time_min: null,
@@ -275,7 +277,7 @@ export function FormatSection({
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <Field label="Format" htmlFor="f-format" className="sm:col-span-2" hint={locked ? "Matches have started, so the format can no longer change." : undefined}>
+      <Field label="Format" htmlFor="f-format" className="sm:col-span-2" hint={locked ? "Matches have started, so the format can no longer change." : FORMAT_DESCRIPTIONS[format]}>
         <NativeSelect id="f-format" value={format} disabled={locked} onChange={(e) => onFormat(e.target.value as TournamentFormat)}>
           {Object.entries(FORMAT_LABELS).map(([k, v]) => (
             <option key={k} value={k}>{v}</option>
@@ -373,6 +375,119 @@ export function PointsSection({ settings, onChange }: { settings: SettingsDraft;
   );
 }
 
+/**
+ * Match timing written the way organisers say it: "7 + 2 + 7, then a 5-minute changeover".
+ * Stored as total playing minutes (match_duration_min) plus half-time and changeover.
+ */
+function TimingEditor({ settings, onChange }: { settings: SettingsDraft; onChange: Change<SettingsDraft> }) {
+  const two = settings.periods === 2;
+  const toHalf = (total: number | null) => (total === null ? null : two ? total / 2 : total);
+  const fromHalf = (half: number | null) => (half === null ? null : two ? half * 2 : half);
+  const leagueHalf = toHalf(settings.match_duration_min);
+  const koSame = settings.knockout_match_duration_min === null;
+  const koHalf = koSame ? leagueHalf : toHalf(settings.knockout_match_duration_min);
+  const koHalfTime = settings.knockout_half_time_min ?? settings.half_time_min;
+  const change = settings.transition_min;
+  const undecided = settings.match_duration_min === null;
+
+  const formula = (half: number | null, ht: number) => {
+    if (half === null) return "not decided";
+    const play = two ? `${half} + ${ht} + ${half}` : `${half}`;
+    const total = (two ? half * 2 + ht : half) + (change ?? 0);
+    return `${play} min${change !== null ? `, then ${change} min changeover = ${total} min per match` : ""}`;
+  };
+
+  const halfLabel = two ? "Each half (minutes)" : "Match length (minutes)";
+
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Match format" htmlFor="m-periods">
+          <NativeSelect
+            id="m-periods"
+            value={settings.periods}
+            onChange={(e) => {
+              const p = Number(e.target.value) as 1 | 2;
+              // Keep the per-half length the organiser typed when switching.
+              const conv = (total: number | null) => (total === null ? null : p === 2 && !two ? total * 2 : p === 1 && two ? total / 2 : total);
+              onChange({ periods: p, match_duration_min: conv(settings.match_duration_min), knockout_match_duration_min: conv(settings.knockout_match_duration_min) });
+            }}
+          >
+            <option value={2}>Two halves with a half-time break</option>
+            <option value={1}>One period, no half-time</option>
+          </NativeSelect>
+        </Field>
+        <UndecidedNumber
+          id="m-trans"
+          label="Changeover between matches (minutes)"
+          hint="Time between the final whistle and the next kick-off on the same pitch."
+          value={settings.transition_min}
+          onChange={(v) => onChange({ transition_min: v })}
+          min={0}
+          max={120}
+          suggestion={5}
+        />
+      </div>
+
+      <div className="rounded-lg border p-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-[13px] font-medium">League and group matches</div>
+          <div className="text-xs text-muted-foreground tabular">{formula(leagueHalf, settings.half_time_min)}</div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label={halfLabel} htmlFor="m-half">
+            <div className="flex items-center gap-2">
+              <NumberInput id="m-half" min={1} max={120} value={leagueHalf} disabled={undecided} placeholder="Not decided" onChange={(v) => onChange({ match_duration_min: fromHalf(v) })} />
+              <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <input type="checkbox" checked={undecided} onChange={(e) => onChange({ match_duration_min: e.target.checked ? null : fromHalf(7) })} />
+                Not decided
+              </label>
+            </div>
+          </Field>
+          {two ? (
+            <Field label="Half-time (minutes)" htmlFor="m-ht">
+              <NumberInput id="m-ht" min={0} max={60} value={settings.half_time_min} onChange={(v) => onChange({ half_time_min: v ?? 0 })} />
+            </Field>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="rounded-lg border p-3">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <div className="text-[13px] font-medium">Knockout matches (semi-finals, third place, final)</div>
+          <div className="text-xs text-muted-foreground tabular">{formula(koHalf, koSame ? settings.half_time_min : koHalfTime)}</div>
+        </div>
+        <label className="mb-3 flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={koSame}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? { knockout_match_duration_min: null, knockout_half_time_min: null }
+                  : { knockout_match_duration_min: fromHalf(10), knockout_half_time_min: settings.half_time_min },
+              )
+            }
+          />
+          Same timing as league matches
+        </label>
+        {!koSame ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={halfLabel} htmlFor="m-kohalf">
+              <NumberInput id="m-kohalf" min={1} max={120} value={koHalf} onChange={(v) => onChange({ knockout_match_duration_min: fromHalf(v ?? 1) })} />
+            </Field>
+            {two ? (
+              <Field label="Half-time (minutes)" htmlFor="m-koht">
+                <NumberInput id="m-koht" min={0} max={60} value={koHalfTime} onChange={(v) => onChange({ knockout_half_time_min: v ?? 0 })} />
+              </Field>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function MatchSection({
   settings,
   onChange,
@@ -388,36 +503,9 @@ export function MatchSection({
   const setBlocked = (list: BlockedPeriodRow[]) => onChange({ blocked_periods: list });
   return (
     <div className="grid gap-5">
+      <TimingEditor settings={settings} onChange={onChange} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <UndecidedNumber
-          id="m-dur"
-          label="Match duration (minutes of play)"
-          hint="Total playing time across all halves."
-          value={settings.match_duration_min}
-          onChange={(v) => onChange({ match_duration_min: v })}
-          min={1}
-          max={240}
-          suggestion={12}
-        />
-        <UndecidedNumber
-          id="m-trans"
-          label="Transition between matches (minutes)"
-          value={settings.transition_min}
-          onChange={(v) => onChange({ transition_min: v })}
-          min={0}
-          max={120}
-          suggestion={3}
-        />
-        <Field label="Halves" htmlFor="m-periods">
-          <NativeSelect id="m-periods" value={settings.periods} onChange={(e) => onChange({ periods: Number(e.target.value) as 1 | 2 })}>
-            <option value={1}>One period (no half-time)</option>
-            <option value={2}>Two halves</option>
-          </NativeSelect>
-        </Field>
-        <Field label="Half-time (minutes)" htmlFor="m-ht">
-          <NumberInput id="m-ht" min={0} max={60} value={settings.half_time_min} disabled={settings.periods === 1} onChange={(v) => onChange({ half_time_min: v ?? 0 })} />
-        </Field>
-        <Field label="Break before knockouts (minutes)" htmlFor="m-kb">
+        <Field label="Extra break before the knockouts (minutes)" htmlFor="m-kb" hint="On top of the normal changeover. Usually 0.">
           <NumberInput id="m-kb" min={0} max={240} value={settings.knockout_break_min} onChange={(v) => onChange({ knockout_break_min: v ?? 0 })} />
         </Field>
         <Field label="Penalty shootout kicks per team" htmlFor="m-pk" hint="Then sudden death.">
