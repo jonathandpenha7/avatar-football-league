@@ -65,8 +65,8 @@ export function MatchCentre({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={view} onValueChange={setView}>
-          <TabsList className="h-auto flex-wrap">
+        <Tabs value={view} onValueChange={setView} className="min-w-0 max-w-full">
+          <TabsList className="no-scrollbar h-auto max-w-full justify-start overflow-x-auto md:flex-wrap">
             {VIEWS.map(([k, l]) => (
               <TabsTrigger key={k} value={k} className="flex-none">
                 {l}
@@ -84,7 +84,7 @@ export function MatchCentre({
       </div>
 
       {view === "pitch" ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {pitches.map((p) => {
             const list = base.filter((f) => f.pitch_id === p.id);
             return (

@@ -131,7 +131,7 @@ export function FixturesView({
         <div className="flex-1" />
         {fixtures.length ? (
           <>
-            <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "list")}>
+            <Tabs value={view} onValueChange={(v) => setView(v as "grid" | "list")} className="hidden md:flex">
               <TabsList>
                 <TabsTrigger value="grid">By pitch</TabsTrigger>
                 <TabsTrigger value="list">List</TabsTrigger>
@@ -191,8 +191,10 @@ export function FixturesView({
           description={isAdmin ? "Add your teams, check the feasibility panel above, then generate fixtures." : "The organisers have not generated fixtures yet."}
           action={isAdmin ? <Button onClick={() => setGenerateOpen(true)} disabled={teams.length < 2}><Swords /> Generate fixtures</Button> : null}
         />
-      ) : view === "grid" ? (
-        <Card className="gap-0 overflow-x-auto py-0">
+      ) : (
+        <>
+        {view === "grid" ? (
+        <Card className="hidden gap-0 overflow-x-auto py-0 md:flex">
           <div className="min-w-[36rem]">
             <div className="grid border-b bg-muted/40 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: `5.5rem repeat(${Math.max(1, pitches.length)}, minmax(0, 1fr))` }}>
               <div className="px-3 py-2">Kick-off</div>
@@ -230,8 +232,9 @@ export function FixturesView({
             })}
           </div>
         </Card>
-      ) : (
-        <Card className="gap-0 divide-y py-0">
+        ) : null}
+        {/* Phones always get the list: the pitch grid needs a wide screen. */}
+        <Card className={cn("gap-0 divide-y py-0", view === "grid" && "md:hidden")}>
           {fixtures.map((f) => (
             <div key={f.id} className={cn("grid grid-cols-[4rem_1fr_auto] items-center gap-3 px-3 py-2 text-sm", conflictIds.has(f.id) && "bg-destructive/5")}>
               <div className="text-xs tabular text-muted-foreground">
@@ -239,11 +242,11 @@ export function FixturesView({
                 {f.code}
               </div>
               <div className="min-w-0">
-                <div className="truncate">{label(f.home_team_id, f.home_source)} <span className="text-muted-foreground">v</span> {label(f.away_team_id, f.away_source)}</div>
+                <div className="leading-snug break-words">{label(f.home_team_id, f.home_source)} <span className="text-muted-foreground">v</span> {label(f.away_team_id, f.away_source)}</div>
                 <div className="text-xs text-muted-foreground">{f.round_name}{f.pitch_id ? ` · ${pitchMap.get(f.pitch_id)?.name}` : ""}</div>
               </div>
               <div className="flex items-center gap-2">
-                <FixtureStatusBadge status={f.status} />
+                <FixtureStatusBadge status={f.status} className={f.status === "scheduled" ? "hidden sm:inline-flex" : undefined} />
                 {isAdmin && ["scheduled", "postponed", "cancelled"].includes(f.status) ? (
                   <Button variant="ghost" size="icon-sm" aria-label={`Edit ${f.code}`} onClick={() => setEditing(f)}><Pencil /></Button>
                 ) : null}
@@ -251,6 +254,7 @@ export function FixturesView({
             </div>
           ))}
         </Card>
+        </>
       )}
 
       {editing ? (

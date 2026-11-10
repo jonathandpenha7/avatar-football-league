@@ -13,7 +13,7 @@ export function AccountForm({ name }: { name: string }) {
   const [fullName, setFullName] = useState(name);
   const [password, setPassword] = useState("");
   return (
-    <div className="grid max-w-3xl gap-6 md:grid-cols-2">
+    <div className="grid grid-cols-1 max-w-3xl gap-6 md:grid-cols-2">
       <Card>
         <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
         <CardContent>

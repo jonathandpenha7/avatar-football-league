@@ -59,7 +59,7 @@ export function OfficialsView({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_22rem]">
         <Card className="gap-0 py-0">
           <CardHeader className="border-b py-3"><CardTitle>Members ({members.length})</CardTitle></CardHeader>
           <Table>
@@ -133,7 +133,7 @@ export function OfficialsView({
           <CardDescription>Referees and scorekeepers can only record events for matches they are assigned to.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[1fr_9rem_10rem_auto] sm:items-end">
+          <div className="grid grid-cols-1 gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-[1fr_9rem_10rem_auto] sm:items-end">
             <Field label="Person" htmlFor="b-user">
               <NativeSelect id="b-user" value={bulk.userId} onChange={(e) => setBulk({ ...bulk, userId: e.target.value })}>
                 <option value="">Choose</option>

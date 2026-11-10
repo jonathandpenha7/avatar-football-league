@@ -131,13 +131,13 @@ export default async function PublicTournamentPage(props: PageProps<"/t/[slug]">
         {!t.fixtures_published ? (
           <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">Fixtures will appear here once the organisers publish them.</p>
         ) : (
-          <Tabs defaultValue={tables.length ? "table" : "fixtures"}>
-            <TabsList className="h-auto flex-wrap">
-              {tables.length ? <TabsTrigger value="table">Standings</TabsTrigger> : null}
-              <TabsTrigger value="fixtures">Fixtures and results</TabsTrigger>
-              {hasKnockout ? <TabsTrigger value="bracket">Knockout</TabsTrigger> : null}
-              <TabsTrigger value="scorers">Top scorers</TabsTrigger>
-              {data.rules.length ? <TabsTrigger value="rules">Rules</TabsTrigger> : null}
+          <Tabs defaultValue={tables.length ? "table" : "fixtures"} className="min-w-0">
+            <TabsList className="no-scrollbar h-auto max-w-full justify-start overflow-x-auto md:flex-wrap">
+              {tables.length ? <TabsTrigger value="table" className="flex-none">Standings</TabsTrigger> : null}
+              <TabsTrigger value="fixtures" className="flex-none">Fixtures and results</TabsTrigger>
+              {hasKnockout ? <TabsTrigger value="bracket" className="flex-none">Knockout</TabsTrigger> : null}
+              <TabsTrigger value="scorers" className="flex-none">Top scorers</TabsTrigger>
+              {data.rules.length ? <TabsTrigger value="rules" className="flex-none">Rules</TabsTrigger> : null}
             </TabsList>
             <TabsContent value="table" className="space-y-6 pt-2">
               {tables.map((x) => (

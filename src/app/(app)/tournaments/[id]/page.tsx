@@ -85,7 +85,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
       <PageHeader
         eyebrow={FORMAT_LABELS[t.format]}
         title={
-          <span className="flex items-center gap-3">
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             {t.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={t.logo_url} alt="" className="size-10 rounded-lg object-cover" />
@@ -107,7 +107,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
         }
       />
 
-      <div className="no-print mb-6 flex flex-wrap gap-2">
+      <div className="no-print mb-6 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
         {ctx.can("tournament.create") ? (
           <Button asChild variant="outline" size="sm"><Link href="/tournaments/new"><Trophy /> Create tournament</Link></Button>
         ) : null}
@@ -128,12 +128,12 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
         <Button asChild variant="outline" size="sm"><Link href={`${base}/standings`}><ListOrdered /> View standings</Link></Button>
       </div>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
         <StatCard label="Teams" value={teams.length} icon={Users} hint={`${s.team_count} expected`} />
         <StatCard label="Registered players" value={activePlayers} icon={Shirt} hint={`max ${s.max_squad_size} per squad`} />
         <StatCard label="Fixtures" value={fixtures.length} icon={CalendarRange} hint={t.fixtures_published ? "Published" : fixtures.length ? "Not published" : "Not generated"} />
         <StatCard label="Completed" value={confirmed.length} icon={CalendarCheck} hint={`${fixtures.filter((f) => f.status === "completed").length} awaiting confirmation`} />
-        <StatCard label="Upcoming" value={fixtures.filter((f) => f.status === "scheduled").length} icon={CalendarClock} hint={live.length ? `${live.length} live now` : undefined} />
+        <StatCard label="Upcoming" value={fixtures.filter((f) => f.status === "scheduled").length} icon={CalendarClock} hint={live.length ? `${live.length} live now` : undefined} className="col-span-2 lg:col-span-1" />
       </div>
 
       {live.length ? (
@@ -151,7 +151,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
         </Card>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_22rem]">
         <div className="min-w-0 space-y-6">
           {standings ? (
             <Card>
@@ -172,7 +172,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
           ) : groups.length ? (
             <Card>
               <CardHeader><CardTitle>Groups</CardTitle></CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
+              <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {groups.map((g) => (
                   <div key={g}>
                     <div className="mb-1 text-xs font-semibold text-muted-foreground">Group {g}</div>
@@ -188,7 +188,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
             </Card>
           ) : null}
 
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <Card>
               <CardHeader><CardTitle>Recent results</CardTitle></CardHeader>
               <CardContent className="-mx-4 -mb-4 divide-y border-t">

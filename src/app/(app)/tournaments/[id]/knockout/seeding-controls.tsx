@@ -34,7 +34,7 @@ export function SeedingControls({
         </ul>
       ) : null}
       {ready ? (
-        <ul className="grid gap-1 sm:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">
           {preview.map((p) => (
             <li key={p.source} className="flex items-center gap-2"><CircleCheck className="size-4 text-success" /> {p.source}: <strong>{p.team}</strong></li>
           ))}

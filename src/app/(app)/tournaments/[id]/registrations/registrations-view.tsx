@@ -99,7 +99,7 @@ function RegistrationCard({
           <Badge variant="outline">{r.consent_given ? "Consent given" : "No consent recorded"}</Badge>
         </div>
       </div>
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div><dt className="text-xs text-muted-foreground">Preferred team</dt><dd>{r.preferred_team_id ? teamName.get(r.preferred_team_id) : r.requested_team_name ?? "Any"}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Position</dt><dd>{r.position ?? "–"}{r.jersey_number !== null ? ` · #${r.jersey_number}` : ""}</dd></div>
         <div><dt className="text-xs text-muted-foreground">Payment option selected</dt><dd>{r.payment_option_selected ?? "–"}</dd></div>

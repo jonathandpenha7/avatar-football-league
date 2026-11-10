@@ -66,7 +66,7 @@ export default async function AuditPage(props: PageProps<"/tournaments/[id]/audi
       ) : (
         <Card className="gap-0 divide-y py-0">
           {logs.map((l) => (
-            <div key={l.id} className="grid gap-1 px-4 py-2.5 text-sm sm:grid-cols-[10rem_1fr_auto]">
+            <div key={l.id} className="grid grid-cols-1 gap-1 px-4 py-2.5 text-sm sm:grid-cols-[10rem_1fr_auto]">
               <div className="text-xs text-muted-foreground tabular">{new Date(l.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "medium" })}</div>
               <div className="min-w-0">
                 <span className="font-medium">{LABELS[l.action] ?? l.action}</span>{" "}

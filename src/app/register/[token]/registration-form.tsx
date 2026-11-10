@@ -38,11 +38,11 @@ export function RegistrationForm({
       }}
     >
       <Field label="Full name" htmlFor="r-name"><Input id="r-name" required value={f.full_name} onChange={(e) => setF({ ...f, full_name: e.target.value })} autoComplete="name" /></Field>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Email" htmlFor="r-email"><Input id="r-email" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} autoComplete="email" /></Field>
         <Field label="Phone" htmlFor="r-phone" hint="Email or phone is required."><Input id="r-phone" type="tel" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete="tel" /></Field>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {info.teams.length ? (
           <Field label="Team" htmlFor="r-team">
             <NativeSelect id="r-team" value={f.preferred_team_id} onChange={(e) => setF({ ...f, preferred_team_id: e.target.value })}>

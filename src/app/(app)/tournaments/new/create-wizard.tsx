@@ -107,7 +107,7 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
     );
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[13rem_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13rem_1fr]">
       <nav aria-label="Steps" className="no-print">
         <ol className="flex gap-1 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible">
           {STEPS.map((s, i) => (
@@ -138,7 +138,7 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
           </CardHeader>
           <CardContent>
             {step === 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -181,7 +181,7 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
                   <p className="text-xs text-muted-foreground">
                     Placeholder names are fine. Rename teams and import players once registration is confirmed.
                   </p>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {resizedNames.map((n, i) => (
                       <Input
                         key={i}
@@ -199,7 +199,7 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
             {step === 5 ? <MatchSection settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} pitches={pitches} onPitches={setPitches} /> : null}
             {step === 6 ? <DisciplineSection settings={settings} onChange={(p) => setSettings((s) => ({ ...s, ...p }))} /> : null}
             {step === 7 ? (
-              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 <Summary label="Name" value={general.name || "Not set"} />
                 <Summary label="Template" value={template?.name ?? "Blank"} />
                 <Summary label="Date" value={general.start_date ?? "Not set"} />

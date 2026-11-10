@@ -168,7 +168,7 @@ function UndecidedNumber({
 
 export function GeneralSection({ value, onChange }: { value: GeneralDraft; onChange: Change<GeneralDraft> }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field label="Tournament name" htmlFor="g-name" className="sm:col-span-2">
         <Input id="g-name" value={value.name} onChange={(e) => onChange({ name: e.target.value })} required />
       </Field>
@@ -217,7 +217,7 @@ export function TeamsSection({
   teamCountOptions?: number[];
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field
         label="Number of teams"
         htmlFor="t-count"
@@ -276,7 +276,7 @@ export function FormatSection({
   locked?: boolean;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       <Field label="Format" htmlFor="f-format" className="sm:col-span-2" hint={locked ? "Matches have started, so the format can no longer change." : FORMAT_DESCRIPTIONS[format]}>
         <NativeSelect id="f-format" value={format} disabled={locked} onChange={(e) => onFormat(e.target.value as TournamentFormat)}>
           {Object.entries(FORMAT_LABELS).map(([k, v]) => (
@@ -401,7 +401,7 @@ function TimingEditor({ settings, onChange }: { settings: SettingsDraft; onChang
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Match format" htmlFor="m-periods">
           <NativeSelect
             id="m-periods"
@@ -434,7 +434,7 @@ function TimingEditor({ settings, onChange }: { settings: SettingsDraft; onChang
           <div className="text-[13px] font-medium">League and group matches</div>
           <div className="text-xs text-muted-foreground tabular">{formula(leagueHalf, settings.half_time_min)}</div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label={halfLabel} htmlFor="m-half">
             <div className="flex items-center gap-2">
               <NumberInput id="m-half" min={1} max={120} value={leagueHalf} disabled={undecided} placeholder="Not decided" onChange={(v) => onChange({ match_duration_min: fromHalf(v) })} />
@@ -472,7 +472,7 @@ function TimingEditor({ settings, onChange }: { settings: SettingsDraft; onChang
           Same timing as league matches
         </label>
         {!koSame ? (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={halfLabel} htmlFor="m-kohalf">
               <NumberInput id="m-kohalf" min={1} max={120} value={koHalf} onChange={(v) => onChange({ knockout_match_duration_min: fromHalf(v ?? 1) })} />
             </Field>
@@ -504,7 +504,7 @@ export function MatchSection({
   return (
     <div className="grid gap-5">
       <TimingEditor settings={settings} onChange={onChange} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Field label="Extra break before the knockouts (minutes)" htmlFor="m-kb" hint="On top of the normal changeover. Usually 0.">
           <NumberInput id="m-kb" min={0} max={240} value={settings.knockout_break_min} onChange={(v) => onChange({ knockout_break_min: v ?? 0 })} />
         </Field>
@@ -582,7 +582,7 @@ export function DisciplineSection({ settings, onChange }: { settings: SettingsDr
         </AlertDescription>
       </Alert>
       <Toggle id="d-2y" label="Two yellow cards in a match count as a red card" checked={settings.second_yellow_is_red} onChange={(v) => onChange({ second_yellow_is_red: v })} />
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <UndecidedNumber id="d-red" label="Matches suspended after a red card" hint="0 = no ban beyond the match." value={settings.red_card_suspension_matches} onChange={(v) => onChange({ red_card_suspension_matches: v })} min={0} max={20} suggestion={1} />
         <UndecidedNumber id="d-yt" label="Yellow cards before an accumulation ban" value={settings.yellow_accumulation_threshold} onChange={(v) => onChange({ yellow_accumulation_threshold: v, yellow_accumulation_suspension_matches: v ? settings.yellow_accumulation_suspension_matches ?? 1 : null })} min={2} max={20} suggestion={3} />
         {settings.yellow_accumulation_threshold ? (

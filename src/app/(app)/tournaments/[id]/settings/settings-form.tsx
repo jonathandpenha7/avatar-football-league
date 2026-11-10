@@ -105,7 +105,7 @@ export function SettingsForm({
 
   return (
     <Tabs defaultValue={initialTab} className="gap-4">
-      <TabsList className="h-auto w-full flex-wrap justify-start">
+      <TabsList className="no-scrollbar h-auto w-full justify-start overflow-x-auto md:flex-wrap">
         {TABS.map(([k, label]) => (
           <TabsTrigger key={k} value={k} className="flex-none">{label}</TabsTrigger>
         ))}
@@ -293,7 +293,7 @@ export function SettingsForm({
               <CardTitle>Start the next tournament</CardTitle>
               <CardDescription>Copies settings, pitches, rules and decisions into a new draft tournament. Fixtures and results are not copied.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
+            <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field label="New tournament name" htmlFor="c-name">
                 <Input id="c-name" value={clone.name} onChange={(e) => setClone({ ...clone, name: e.target.value })} />
               </Field>

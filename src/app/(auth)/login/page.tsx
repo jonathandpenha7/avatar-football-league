@@ -9,7 +9,7 @@ export default async function LoginPage(props: PageProps<"/login">) {
   const next = typeof sp.next === "string" ? sp.next : "/";
   const error = typeof sp.error === "string" ? sp.error : undefined;
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
+    <div className="grid grid-cols-1 min-h-svh lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-primary text-primary-foreground lg:flex lg:flex-col lg:justify-between lg:p-10">
         <div className="flex items-center gap-2 font-semibold">
           <span className="flex size-8 items-center justify-center rounded-lg bg-primary-foreground/15">

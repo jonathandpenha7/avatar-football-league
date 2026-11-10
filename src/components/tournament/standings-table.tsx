@@ -37,13 +37,16 @@ export function StandingsTable({
       </TableHeader>
       <TableBody>
         {standings.rows.map((r) => {
+          const nonePlayed = standings.rows.every((x) => x.played === 0);
           const qualifies = qualifiers && r.position <= qualifiers && !r.shared;
           const boundary = qualifiers && r.position <= qualifiers && r.position + (r.shared ? r.tiedWith.length : 0) > qualifiers;
           return (
             <TableRow key={r.teamId} className={cn(qualifies && "bg-success/[0.06]")}>
               <TableCell className="relative text-center font-medium">
                 {qualifies ? <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-success" /> : null}
-                {r.shared ? (
+                {nonePlayed ? (
+                  <span className="text-muted-foreground">–</span>
+                ) : r.shared ? (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span className={cn("cursor-help underline decoration-dotted", boundary && "text-amber-600")}>={r.position}</span>

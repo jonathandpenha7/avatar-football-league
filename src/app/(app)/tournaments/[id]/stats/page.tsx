@@ -35,7 +35,7 @@ export default async function StatsPage(props: PageProps<"/tournaments/[id]/stat
         <StatCard label="Goals per match" value={stats.goalsPerMatch.toFixed(2)} icon={Target} />
         <StatCard label="Clean sheets" value={stats.teams.reduce((s, t) => s + t.cleanSheets, 0)} icon={ShieldCheck} />
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>Goals scored per team</CardTitle></CardHeader>
           <CardContent>

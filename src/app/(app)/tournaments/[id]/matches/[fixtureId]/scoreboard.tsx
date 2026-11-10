@@ -165,7 +165,8 @@ export function Scoreboard({
             ) : null}
             <div className={cn("mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium tabular", isLive ? "bg-live/10 text-live" : "bg-muted text-muted-foreground")}>
               <Timer className="size-3.5" />
-              {formatClockSeconds(elapsed)}
+              {/* The clock ticks, so server and browser render different seconds. */}
+              <span suppressHydrationWarning>{formatClockSeconds(elapsed)}</span>
               {settings.matchDurationMin ? <span className="text-xs opacity-70">/ {settings.matchDurationMin}:00</span> : null}
             </div>
             <div className="mt-1 text-xs text-muted-foreground">{PERIOD_LABELS[f.period]}</div>
@@ -286,7 +287,7 @@ export function Scoreboard({
         />
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_20rem]">
         {/* Timeline */}
         <Card className="gap-0 py-0">
           <div className="border-b px-4 py-3 text-sm font-semibold">Match events</div>
@@ -413,7 +414,7 @@ function TeamSide({ team, fallback, winner, align }: { team: Team | null; fallba
   return (
     <div className={cn("flex min-w-0 flex-col items-center gap-2 text-center", align === "right" ? "sm:items-center" : "")}>
       <TeamMark team={team ?? { name: fallback }} size="lg" />
-      <div className={cn("w-full truncate text-sm font-semibold sm:text-base", !team && "text-muted-foreground italic", winner && "text-success")}>
+      <div className={cn("line-clamp-2 w-full text-sm leading-tight font-semibold break-words sm:text-base", !team && "text-muted-foreground italic", winner && "text-success")}>
         {team?.name ?? fallback}
       </div>
     </div>

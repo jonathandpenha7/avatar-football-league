@@ -104,7 +104,7 @@ export function ReportsView({ data, backup }: { data: ReportData; backup: Record
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {reports.map((r) => (
           <Card key={r.title} className="gap-3 px-4">
             <div className="flex items-center gap-2 font-semibold"><r.icon className="size-4 text-primary" /> {r.title}</div>

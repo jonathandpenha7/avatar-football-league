@@ -50,7 +50,7 @@ export function RulesView({
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_24rem]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_24rem]">
       <div className="min-w-0 space-y-6">
         {isAdmin ? (
           <Card className="gap-3 px-4">

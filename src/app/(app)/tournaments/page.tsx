@@ -64,7 +64,7 @@ function TournamentGrid({ title, list }: { title: string; list: Awaited<ReturnTy
   return (
     <section className="mb-8">
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{title}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((t) => (
           <Link key={t.id} href={`/tournaments/${t.id}`}>
             <Card className="h-full gap-3 px-4 transition-shadow hover:shadow-md hover:ring-primary/30">
