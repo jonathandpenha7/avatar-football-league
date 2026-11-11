@@ -25,6 +25,7 @@ export function MatchCentre({
   teams,
   pitches,
   myFixtureIds,
+  referees,
   today,
   initialView,
   isAdmin,
@@ -34,6 +35,7 @@ export function MatchCentre({
   teams: Team[];
   pitches: Pitch[];
   myFixtureIds: string[];
+  referees: Record<string, string[]>;
   today: string;
   initialView?: string;
   isAdmin: boolean;
@@ -45,6 +47,11 @@ export function MatchCentre({
   const teamMap = new Map(teams.map((t) => [t.id, t]));
   const pitchName = new Map(pitches.map((p) => [p.id, p.name]));
   const mine = new Set(myFixtureIds);
+  const refLine = (f: Fixture) => {
+    if (f.status === "confirmed" || f.status === "cancelled") return referees[f.id]?.length ? <span className="text-muted-foreground">Ref: {referees[f.id].join(", ")}</span> : null;
+    if (referees[f.id]?.length) return <span className="text-muted-foreground">Ref: {referees[f.id].join(", ")}</span>;
+    return isAdmin ? <span className="font-medium text-amber-700 dark:text-warning">No referee yet</span> : null;
+  };
   const base = fixtures.filter((f) => !onlyMine || mine.has(f.id));
 
   const filtered = (() => {
@@ -92,7 +99,7 @@ export function MatchCentre({
                 <div className="border-b px-4 py-2.5 text-sm font-semibold">{p.name}</div>
                 <div className="divide-y">
                   {list.length ? list.map((f) => (
-                    <FixtureRow key={f.id} fixture={f} teams={teamMap} href={`/tournaments/${tournamentId}/matches/${f.id}`} />
+                    <FixtureRow key={f.id} fixture={f} teams={teamMap} href={`/tournaments/${tournamentId}/matches/${f.id}`} footer={refLine(f)} />
                   )) : <p className="p-4 text-sm text-muted-foreground">No matches on this pitch.</p>}
                 </div>
               </Card>
@@ -102,7 +109,7 @@ export function MatchCentre({
       ) : filtered.length ? (
         <Card className="gap-0 divide-y py-0">
           {filtered.map((f) => (
-            <FixtureRow key={f.id} fixture={f} teams={teamMap} pitchName={f.pitch_id ? pitchName.get(f.pitch_id) : null} href={`/tournaments/${tournamentId}/matches/${f.id}`} showDate={view !== "today"} />
+            <FixtureRow key={f.id} fixture={f} teams={teamMap} pitchName={f.pitch_id ? pitchName.get(f.pitch_id) : null} href={`/tournaments/${tournamentId}/matches/${f.id}`} showDate={view !== "today"} footer={refLine(f)} />
           ))}
         </Card>
       ) : (

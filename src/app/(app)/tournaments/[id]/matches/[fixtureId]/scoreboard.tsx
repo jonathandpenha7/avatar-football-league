@@ -42,6 +42,7 @@ import {
 } from "@/lib/actions/matches";
 import { EVENT_LABELS, elapsedSeconds, formatClockSeconds } from "@/lib/domain";
 import { describeSource, type MatchAlert } from "@/lib/engine";
+import { assignOfficial, removeOfficial } from "@/lib/actions/fixtures";
 import type { EventType, Fixture, MatchEvent, MatchOfficial, Player, Team } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -86,6 +87,7 @@ export function Scoreboard({
   pitchName,
   officials,
   authorNames,
+  candidates,
   alerts,
   settings,
   squadCounts,
@@ -100,6 +102,8 @@ export function Scoreboard({
   pitchName: string | null;
   officials: (MatchOfficial & { name: string })[];
   authorNames: Record<string, string>;
+  /** People who can be assigned (admins only see this list). */
+  candidates: OfficialCandidate[];
   alerts: MatchAlert[];
   settings: MatchSettings;
   squadCounts: Record<string, number>;
@@ -211,6 +215,13 @@ export function Scoreboard({
         {!teamsKnown ? (
           <p className="px-4 text-center text-sm text-muted-foreground">Teams for this match are decided by earlier results.</p>
         ) : null}
+        <OfficialsBar
+          tournamentId={tournamentId}
+          fixtureId={f.id}
+          officials={officials}
+          candidates={candidates}
+          canAssign={can.admin && f.status !== "confirmed"}
+        />
       </Card>
 
       {alerts.length ? (
@@ -385,21 +396,6 @@ export function Scoreboard({
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle>Officials</CardTitle></CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              {officials.length ? (
-                officials.map((o) => (
-                  <div key={o.id} className="flex justify-between gap-2">
-                    <span>{o.name}</span>
-                    <span className="text-muted-foreground capitalize">{o.role}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="text-muted-foreground">No officials assigned.</p>
-              )}
-            </CardContent>
-          </Card>
 
           {can.admin || can.refereeNotes ? (
             <NotesCard tournamentId={tournamentId} fixture={f} canMatch={can.admin} canReferee={can.refereeNotes} />
@@ -629,5 +625,89 @@ function NotesCard({ tournamentId, fixture, canMatch, canReferee }: { tournament
         {pending ? <p className="text-xs text-muted-foreground">Saving…</p> : null}
       </CardContent>
     </Card>
+  );
+}
+
+export interface OfficialCandidate {
+  userId: string;
+  name: string;
+  /** Fixture this person is officiating right now, if any (e.g. "L5 on Pitch 1"). */
+  busyWith: string | null;
+}
+
+/** Referee and scorekeeper for this match, assignable on the spot by admins. */
+function OfficialsBar({
+  tournamentId,
+  fixtureId,
+  officials,
+  candidates,
+  canAssign,
+}: {
+  tournamentId: string;
+  fixtureId: string;
+  officials: (MatchOfficial & { name: string })[];
+  candidates: OfficialCandidate[];
+  canAssign: boolean;
+}) {
+  const { pending, run } = useAction();
+  const roles = [
+    { role: "referee" as const, label: "Referee" },
+    { role: "scorekeeper" as const, label: "Scorekeeper" },
+  ];
+  return (
+    <div className="grid grid-cols-1 gap-3 border-t px-4 pt-4 sm:grid-cols-2">
+      {roles.map(({ role, label }) => {
+        const assigned = officials.filter((o) => o.role === role);
+        const available = candidates.filter((c) => !assigned.some((a) => a.user_id === c.userId));
+        return (
+          <div key={role} className="space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground">{label}</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {assigned.map((o) => (
+                <Badge key={o.id} variant="secondary" className="h-7 gap-1 px-2.5 text-sm">
+                  {o.name}
+                  {canAssign ? (
+                    <button
+                      type="button"
+                      aria-label={`Remove ${o.name} as ${label.toLowerCase()}`}
+                      className="-mr-1 ml-0.5 rounded px-1 opacity-60 hover:opacity-100"
+                      disabled={pending}
+                      onClick={() => run(() => removeOfficial(tournamentId, o.id), { success: `${o.name} removed.` })}
+                    >
+                      ×
+                    </button>
+                  ) : null}
+                </Badge>
+              ))}
+              {!assigned.length && !canAssign ? <span className="text-sm text-muted-foreground">Not assigned</span> : null}
+              {canAssign ? (
+                <NativeSelect
+                  aria-label={`Assign ${label.toLowerCase()}`}
+                  className="w-auto min-w-44 flex-1"
+                  value=""
+                  disabled={pending || !available.length}
+                  onChange={(e) => {
+                    const c = candidates.find((x) => x.userId === e.target.value);
+                    if (c) run(() => assignOfficial(tournamentId, { fixtureIds: [fixtureId], userId: c.userId, role }), { success: `${c.name} is ${label.toLowerCase()} for this match.` });
+                  }}
+                >
+                  <option value="">{available.length ? (assigned.length ? `+ Add another ${label.toLowerCase()}` : `Assign ${label.toLowerCase()}…`) : "No one else to assign"}</option>
+                  {available.map((c) => (
+                    <option key={c.userId} value={c.userId}>
+                      {c.name} {c.busyWith ? `(busy: ${c.busyWith})` : "(free)"}
+                    </option>
+                  ))}
+                </NativeSelect>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+      {canAssign && !candidates.length ? (
+        <p className="text-xs text-muted-foreground sm:col-span-2">
+          Invite referees and scorekeepers on the Organisers and officials page first.
+        </p>
+      ) : null}
+    </div>
   );
 }

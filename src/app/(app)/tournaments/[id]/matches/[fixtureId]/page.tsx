@@ -33,6 +33,25 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
   const memberName = new Map(members.map((m) => [m.user_id, m.profile?.full_name ?? m.profile?.email ?? "Organiser"]));
 
   const fixtureOfficials = officials.filter((o) => o.fixture_id === fixtureId);
+  // People who can officiate, and who is busy in another live match right now.
+  const liveElsewhere = new Map(
+    fixtures.filter((f) => f.id !== fixtureId && (f.status === "in_progress" || f.status === "paused")).map((f) => [f.id, f]),
+  );
+  const pitchName = new Map(pitches.map((p) => [p.id, p.name]));
+  const candidates = ctx.isAdmin
+    ? members
+        .filter((m) => m.role !== "viewer")
+        .map((m) => {
+          const busy = officials.find((o) => o.user_id === m.user_id && liveElsewhere.has(o.fixture_id));
+          const bf = busy ? liveElsewhere.get(busy.fixture_id)! : null;
+          return {
+            userId: m.user_id,
+            name: memberName.get(m.user_id) ?? "Organiser",
+            busyWith: bf ? `${bf.code}${bf.pitch_id && pitchName.get(bf.pitch_id) ? ` on ${pitchName.get(bf.pitch_id)}` : ""}` : null,
+          };
+        })
+        .sort((a, b) => Number(!!a.busyWith) - Number(!!b.busyWith) || a.name.localeCompare(b.name))
+    : [];
   const assignedAs = fixtureOfficials.filter((o) => o.user_id === ctx.profile.id).map((o) => o.role);
   const matchCtx = { assignedAs, refereeCanConfirm: ctx.settings.referee_can_confirm };
   const teamIds = [fixture.home_team_id, fixture.away_team_id];
@@ -80,6 +99,7 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
         pitchName={pitches.find((p) => p.id === fixture.pitch_id)?.name ?? null}
         officials={fixtureOfficials.map((o) => ({ ...o, name: memberName.get(o.user_id) ?? "Assigned" }))}
         authorNames={Object.fromEntries(memberName)}
+        candidates={candidates}
         alerts={alerts}
         settings={{
           periods: ctx.settings.periods,

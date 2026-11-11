@@ -18,12 +18,15 @@ export function FixtureRow({
   pitchName,
   href,
   showDate,
+  footer,
 }: {
   fixture: Fixture;
   teams: Map<string, TeamLike>;
   pitchName?: string | null;
   href?: string;
   showDate?: boolean;
+  /** Extra line under the teams, e.g. the assigned referee. */
+  footer?: React.ReactNode;
 }) {
   const home = f.home_team_id ? teams.get(f.home_team_id) : null;
   const away = f.away_team_id ? teams.get(f.away_team_id) : null;
@@ -46,6 +49,7 @@ export function FixtureRow({
         {f.home_penalties !== null && f.away_penalties !== null ? (
           <div className="text-xs text-muted-foreground">Penalties {f.home_penalties}–{f.away_penalties}</div>
         ) : null}
+        {footer ? <div className="text-xs">{footer}</div> : null}
       </div>
       <div className="flex flex-col items-end gap-1">
         <FixtureStatusBadge status={f.status} />
