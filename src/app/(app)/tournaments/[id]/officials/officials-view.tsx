@@ -72,7 +72,7 @@ export function OfficialsView({
                     <div className="text-xs text-muted-foreground">{m.profile?.email}</div>
                   </TableCell>
                   <TableCell>
-                    <NativeSelect aria-label="Role" value={m.role} disabled={pending} onChange={(e) => run(() => updateMemberRole(tournamentId, m.id, e.target.value))} className="w-44">
+                    <NativeSelect aria-label="Role" value={m.role} disabled={pending} onChange={(e) => run(() => updateMemberRole(tournamentId, m.id, e.target.value))} className="w-32 sm:w-44">
                       {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                     </NativeSelect>
                   </TableCell>
@@ -114,7 +114,7 @@ export function OfficialsView({
                 {invitations.map((i) => (
                   <div key={i.id} className="flex items-center gap-2 text-sm">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate">{i.email}</div>
+                      <div className="[overflow-wrap:anywhere]">{i.email}</div>
                       <div className="text-xs text-muted-foreground">{ROLE_LABELS[i.role]}{new Date(i.expires_at) < new Date() ? " · expired" : ""}</div>
                     </div>
                     <Button variant="ghost" size="icon-sm" aria-label="Copy invitation link" onClick={() => copy(`${siteUrl}/invite/${i.token}`)}><Copy /></Button>
@@ -170,7 +170,7 @@ export function OfficialsView({
               return (
                 <div key={f.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
                   <div className="w-14 text-xs text-muted-foreground tabular">{f.code}<div>{f.scheduled_time?.slice(0, 5) ?? ""}</div></div>
-                  <div className="min-w-40 flex-1 truncate">
+                  <div className="min-w-0 flex-1 leading-snug break-words">
                     {f.home_team_id ? teamName.get(f.home_team_id) : describeSource(f.home_source)} v {f.away_team_id ? teamName.get(f.away_team_id) : describeSource(f.away_source)}
                     {f.pitch_id ? <span className="text-xs text-muted-foreground"> · {pitchName.get(f.pitch_id)}</span> : null}
                   </div>

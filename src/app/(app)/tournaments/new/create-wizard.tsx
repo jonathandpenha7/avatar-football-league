@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useAction } from "@/hooks/use-action";
 import { createTournament } from "@/lib/actions/tournaments";
@@ -107,8 +108,15 @@ export function CreateWizard({ templates, initialTemplate }: { templates: Templa
     );
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[13rem_1fr]">
-      <nav aria-label="Steps" className="no-print">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[13rem_1fr] lg:gap-6">
+      <div className="lg:hidden">
+        <div className="mb-1.5 flex items-baseline justify-between text-sm">
+          <span className="font-medium">{STEPS[step]}</span>
+          <span className="text-xs text-muted-foreground tabular">Step {step + 1} of {STEPS.length}</span>
+        </div>
+        <Progress value={((step + 1) / STEPS.length) * 100} />
+      </div>
+      <nav aria-label="Steps" className="no-print hidden lg:block">
         <ol className="flex gap-1 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible">
           {STEPS.map((s, i) => (
             <li key={s}>

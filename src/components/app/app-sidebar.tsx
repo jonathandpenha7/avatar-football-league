@@ -51,6 +51,7 @@ import {
 import { signOut } from "@/lib/actions/auth";
 import { ROLE_LABELS, type MemberRole } from "@/lib/permissions";
 import type { Profile } from "@/lib/types";
+import { LinkPending } from "./link-pending";
 import type { TournamentFormat } from "@/lib/engine/types";
 
 export interface SidebarTournament {
@@ -189,6 +190,7 @@ export function AppSidebar({ tournaments, profile }: { tournaments: SidebarTourn
                             <Link href={href} onClick={() => setOpenMobile(false)}>
                               <item.icon />
                               <span>{item.label}</span>
+                              <LinkPending className="ml-auto" />
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>

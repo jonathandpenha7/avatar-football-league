@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { CalendarRange, LayoutDashboard, ListOrdered, Menu, Timer } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+import { LinkPending } from "./link-pending";
 
 function currentTournamentId(pathname: string) {
   return /^\/tournaments\/([0-9a-f-]{36})/.exec(pathname)?.[1] ?? null;
@@ -44,7 +45,10 @@ export function MobileNav() {
             className={cn("flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium", i.active ? "text-primary" : "text-muted-foreground")}
             aria-current={i.active ? "page" : undefined}
           >
-            <i.icon className="size-5" />
+            <span className="relative">
+              <i.icon className="size-5" />
+              <LinkPending className="absolute -top-0.5 -right-1.5" />
+            </span>
             {i.label}
           </Link>
         ))}

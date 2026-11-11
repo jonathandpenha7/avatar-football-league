@@ -129,7 +129,7 @@ export function DisciplineView({
                 <TableRow>
                   <TableHead>Player</TableHead>
                   <TableHead>Reason</TableHead>
-                  <TableHead className="text-center">Served</TableHead>
+                  <TableHead className="hidden text-center sm:table-cell">Served</TableHead>
                   <TableHead>Status</TableHead>
                   {isAdmin ? <TableHead /> : null}
                 </TableRow>
@@ -147,7 +147,7 @@ export function DisciplineView({
                         {s.reason}
                         <div className="text-xs text-muted-foreground">{s.source === "automatic" ? "Automatic" : "Manual"}{s.starts_after_fixture_id ? ` · after ${fixtureCode.get(s.starts_after_fixture_id)}` : ""}</div>
                       </TableCell>
-                      <TableCell className="text-center tabular">{p?.served ?? 0} / {s.matches}</TableCell>
+                      <TableCell className="hidden text-center tabular sm:table-cell">{p?.served ?? 0} / {s.matches}</TableCell>
                       <TableCell>
                         {s.status === "overturned" ? (
                           <Badge variant="outline">Overturned</Badge>

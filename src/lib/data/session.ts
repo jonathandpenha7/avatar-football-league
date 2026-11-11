@@ -7,10 +7,12 @@ import type { Profile, Tournament, TournamentSettings } from "@/lib/types";
 
 export const getSession = cache(async () => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  // getClaims verifies the signed session token locally (using the project's
+  // public signing keys) instead of calling the Auth server on every request.
+  const { data } = await supabase.auth.getClaims();
+  const sub = data?.claims?.sub;
+  if (!sub) return null;
+  const user = { id: sub, email: (data.claims.email as string | undefined) ?? null };
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
   return { supabase, user, profile: (profile as Profile | null) ?? null };
 });

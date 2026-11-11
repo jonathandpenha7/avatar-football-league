@@ -30,8 +30,8 @@ export function UsersView({
         <TableHeader>
           <TableRow>
             <TableHead>User</TableHead>
-            <TableHead className="text-center">Super Admin</TableHead>
-            <TableHead className="text-center">Can create tournaments</TableHead>
+            <TableHead className="text-center"><span className="sm:hidden">Admin</span><span className="hidden sm:inline">Super Admin</span></TableHead>
+            <TableHead className="text-center"><span className="sm:hidden">Create</span><span className="hidden sm:inline">Can create tournaments</span></TableHead>
             <TableHead>Tournaments</TableHead>
           </TableRow>
         </TableHeader>

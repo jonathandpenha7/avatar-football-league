@@ -21,16 +21,18 @@ export function Bracket({ fixtures, teams, hrefBase }: { fixtures: Fixture[]; te
       {sections.map((section) => {
         const rounds = new Map<string, Fixture[]>();
         for (const f of [...section.list].sort((a, b) => a.round_number - b.round_number || a.code.localeCompare(b.code, undefined, { numeric: true }))) {
-          const key = `${String(f.round_number).padStart(3, "0")}|${f.round_name ?? `Round ${f.round_number}`}`;
+          // The final is shown last in its round (after a third-place play-off played at the same stage).
+          const order = f.code === "F" || f.code === "GF" ? 1 : 0;
+          const key = `${String(f.round_number).padStart(3, "0")}${order}|${f.round_name ?? `Round ${f.round_number}`}`;
           rounds.set(key, [...(rounds.get(key) ?? []), f]);
         }
         const cols = [...rounds.entries()].sort(([a], [b]) => a.localeCompare(b));
         return (
           <div key={section.key}>
             {section.title ? <h3 className="mb-3 text-sm font-semibold text-muted-foreground">{section.title}</h3> : null}
-            <div className="flex gap-4 overflow-x-auto pb-2">
+            <div className="flex flex-col gap-5 md:flex-row md:gap-4 md:overflow-x-auto md:pb-2">
               {cols.map(([key, list]) => (
-                <div key={key} className="flex min-w-60 flex-1 flex-col">
+                <div key={key} className="flex flex-1 flex-col md:min-w-60">
                   <div className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">{key.split("|")[1]}</div>
                   <div className="flex flex-1 flex-col justify-around gap-3">
                     {list.map((f) => (
