@@ -7,7 +7,8 @@ import { getTournamentContext } from "@/lib/data/session";
 import { getFixtures, getMembers, getOfficials, getPitches, getPlayers, getSuspensions, getTeams } from "@/lib/data/loaders";
 import { preMatchAlerts } from "@/lib/engine";
 import { playingMinutes, toDisciplineFixture } from "@/lib/domain";
-import type { MatchEvent } from "@/lib/types";
+import { serverTimeMs } from "@/lib/server-time";
+import type { MatchEvent, MatchParticipant } from "@/lib/types";
 import { Scoreboard } from "./scoreboard";
 
 export default async function MatchPage(props: PageProps<"/tournaments/[id]/matches/[fixtureId]">) {
@@ -29,6 +30,16 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
     .eq("fixture_id", fixtureId)
     .order("created_at", { ascending: true });
   const events = (eventRows ?? []) as MatchEvent[];
+  const { data: participantRows } = await ctx.supabase.from("match_participants").select("fixture_id, team_id, player_id, source").eq("fixture_id", fixtureId);
+  const s = ctx.settings;
+  const ko = fixture.stage === "knockout" && s.knockout_match_duration_min !== null;
+  const playMin = ko ? s.knockout_match_duration_min : s.match_duration_min;
+  const clockConfig = {
+    periods: s.periods,
+    halfSec: playMin ? Math.floor((playMin * 60) / s.periods) : null,
+    halfTimeSec: ((ko ? s.knockout_half_time_min : null) ?? s.half_time_min) * 60,
+    extraTimeSec: (s.extra_time_min ?? 5) * 60,
+  };
   const members = ctx.isAdmin || officials.some((o) => o.user_id === ctx.profile.id) ? await getMembers(id) : [];
   const memberName = new Map(members.map((m) => [m.user_id, m.profile?.full_name ?? m.profile?.email ?? "Organiser"]));
 
@@ -109,8 +120,12 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
           forfeitGoals: ctx.settings.forfeit_goals,
           minPlayers: ctx.settings.min_players_to_start,
           secondYellowIsRed: ctx.settings.second_yellow_is_red,
+          penaltiesEnabled: ctx.settings.penalties_enabled,
         }}
         squadCounts={Object.fromEntries(confirmedCount)}
+        clockConfig={clockConfig}
+        serverNow={serverTimeMs()}
+        participants={(participantRows ?? []) as MatchParticipant[]}
         permissions={{
           record: ctx.can("match.record", matchCtx) && fixture.status !== "confirmed",
           control: ctx.can("match.control", matchCtx),
@@ -118,6 +133,7 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
           correct: ctx.can("match.correct"),
           admin: ctx.isAdmin,
           refereeNotes: ctx.isAdmin || assignedAs.includes("referee"),
+          abandon: ctx.isAdmin || assignedAs.includes("referee"),
         }}
       />
     </>

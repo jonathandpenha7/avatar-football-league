@@ -54,6 +54,7 @@ export const FIXTURE_STATUS_LABELS: Record<FixtureStatus, string> = {
   confirmed: "Confirmed",
   postponed: "Postponed",
   cancelled: "Cancelled",
+  abandoned: "Abandoned",
 };
 
 export const EVENT_LABELS: Record<EventType, string> = {
@@ -143,13 +144,15 @@ export function standingsFor(
   events: MatchEvent[],
   decisions: TiebreakDecisionRow[],
   scope: { stage: "league" } | { stage: "group"; group: string },
+  options: { provisional?: boolean } = {},
 ): StandingsResult {
   const scopedTeams =
     scope.stage === "group" ? teams.filter((t) => t.group_label === scope.group) : teams;
   const scopedFixtures = fixtures.filter((f) =>
     scope.stage === "group" ? f.stage === "group" && f.group_label === scope.group : f.stage === "league",
   );
-  const fixtureIds = new Set(scopedFixtures.filter((f) => f.status === "confirmed").map((f) => f.id));
+  const counted = options.provisional ? ["confirmed", "completed", "in_progress", "paused"] : ["confirmed"];
+  const fixtureIds = new Set(scopedFixtures.filter((f) => counted.includes(f.status)).map((f) => f.id));
   const cards = events
     .filter((e) => fixtureIds.has(e.fixture_id) && e.team_id && (e.event_type === "yellow_card" || e.event_type === "red_card"))
     .map((e) => ({ teamId: e.team_id!, type: e.event_type === "yellow_card" ? ("yellow" as const) : ("red" as const) }));
@@ -174,6 +177,7 @@ export function standingsFor(
       decisions: decisions
         .filter((d) => d.scope === scopeKey)
         .map((d) => ({ orderedTeamIds: d.ordered_team_ids, createdAt: d.created_at })),
+      includeProvisional: options.provisional,
     },
   );
 }
@@ -226,3 +230,25 @@ export function formatOptions(ctx: { tournament: Tournament; settings: Tournamen
     qualifiersPerGroup: ctx.settings.qualifiers_per_group,
   };
 }
+
+/** Current date and minute of the day in the tournament's time zone. */
+export function nowInZone(timeZone: string): { date: string; minutes: number } {
+  const now = new Date();
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+    return { date: `${get("year")}-${get("month")}-${get("day")}`, minutes: Number(get("hour")) * 60 + Number(get("minute")) };
+  } catch {
+    return { date: now.toISOString().slice(0, 10), minutes: now.getUTCHours() * 60 + now.getUTCMinutes() };
+  }
+}
+
+export const PHASE_LABELS: Record<string, string> = {
+  not_started: "Not started",
+  first_half: "First half",
+  half_time: "Half-time",
+  second_half: "Second half",
+  extra_time: "Extra time",
+  penalties: "Penalty shootout",
+  full_time: "Full time",
+};

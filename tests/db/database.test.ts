@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { asAnon, asService, asUser, createTestDb, createUser, type TestDb } from "./harness";
+import { asAnon, asService, asUser, createTestDb, createUser, type TestDb, playMatch } from "./harness";
 
 /**
  * These tests run the real Supabase migrations in PGlite (Postgres in WASM)
@@ -173,8 +173,8 @@ describe("matches, scoring and results", () => {
 
   it("lets officials run the clock but not change teams or schedule", async () => {
     await asUser(db, scorekeeper);
-    await db.query("update public.fixtures set status = 'in_progress', period = 'first_half', timer_started_at = now() where id = $1", [l1]);
-    await expectError(db.query("update public.fixtures set scheduled_time = '20:00' where id = $1", [l1]), /only update match status/);
+    await playMatch(db, l1, "started");
+    await expectError(db.query("update public.fixtures set scheduled_time = '20:00' where id = $1", [l1]), /only edit notes/);
   });
 
   it("derives the score from goal events, including own goals", async () => {
@@ -195,7 +195,7 @@ describe("matches, scoring and results", () => {
 
   it("does not let scorekeepers confirm results", async () => {
     await asUser(db, scorekeeper);
-    await db.query("update public.fixtures set status = 'completed' where id = $1", [l1]);
+    await playMatch(db, l1, "completed");
     await expectError(db.query("select public.confirm_match_result($1, null)", [l1]), /not authorised/);
     await expectError(db.query("update public.fixtures set status = 'confirmed' where id = $1", [l1]), /confirm action/);
   });
@@ -234,7 +234,7 @@ describe("matches, scoring and results", () => {
     await db.query("select public.assign_knockout_teams($1, $2::jsonb, false)", [
       tournamentId, JSON.stringify([{ source: "league:1", team_id: teamIds[lions] }, { source: "league:2", team_id: teamIds[eagles] }]),
     ]);
-    await db.query("update public.fixtures set status = 'completed' where id = $1", [sf1]);
+    await playMatch(db, sf1, "completed");
     await expectError(db.query("select public.confirm_match_result($1, null)", [sf1]), /penalty shootout/);
     const ins = "insert into public.match_events (tournament_id, fixture_id, event_type, team_id) values ($1, $2, $3, $4)";
     await db.query(ins, [tournamentId, sf1, "shootout_goal", teamIds[eagles]]);
@@ -265,7 +265,7 @@ describe("discipline", () => {
     await asUser(db, admin);
     const l2 = await one<{ id: string }>("select id from public.fixtures where code = 'L2' and tournament_id = $1", [tournamentId]);
     const player = await one<{ id: string }>("insert into public.players (tournament_id, team_id, full_name) values ($1, $2, 'Hot Head') returning id", [tournamentId, teamIds[2]]);
-    await db.query("update public.fixtures set status = 'in_progress' where id = $1", [l2.id]);
+    await playMatch(db, l2.id, "started");
     await db.query("insert into public.match_events (tournament_id, fixture_id, event_type, team_id, player_id) values ($1, $2, 'red_card', $3, $4)", [tournamentId, l2.id, teamIds[2], player.id]);
     expect((await db.query("select * from public.disciplinary_records where player_id = $1", [player.id])).rows).toHaveLength(1);
     expect((await db.query("select * from public.suspensions where player_id = $1", [player.id])).rows).toHaveLength(0);

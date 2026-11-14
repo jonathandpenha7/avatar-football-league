@@ -2,7 +2,7 @@ import type { MemberRole } from "./permissions";
 import type { Tiebreaker, TournamentFormat } from "./engine/types";
 
 export type TournamentStatus = "draft" | "registration_open" | "ready" | "live" | "completed" | "archived";
-export type FixtureStatus = "scheduled" | "in_progress" | "paused" | "completed" | "confirmed" | "postponed" | "cancelled";
+export type FixtureStatus = "scheduled" | "in_progress" | "paused" | "completed" | "confirmed" | "postponed" | "cancelled" | "abandoned";
 export type MatchPeriod = "not_started" | "first_half" | "half_time" | "second_half" | "extra_time" | "penalties" | "full_time";
 export type EventType =
   | "goal" | "own_goal" | "penalty_goal" | "yellow_card" | "red_card" | "foul"
@@ -45,14 +45,49 @@ export interface Tournament {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  league_confirmed_at?: string | null;
 }
 
 export interface BlockedPeriodRow {
   date?: string | null;
   start: string; // HH:MM
   end: string;
+  /** null = all pitches */
   pitch_id?: string | null;
   label?: string | null;
+  description?: string | null;
+}
+
+export interface TournamentAwards {
+  tournament_id: string;
+  champion_team_id: string | null;
+  runner_up_team_id: string | null;
+  third_place_team_id: string | null;
+  mvp_player_id: string | null;
+  mvp_reason: string | null;
+  mvp_comments: string | null;
+  top_scorer_player_ids: string[];
+  top_scorer_goals: number | null;
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  published: boolean;
+  finalised_at: string | null;
+}
+
+export interface MvpNomination {
+  id: string;
+  tournament_id: string;
+  player_id: string;
+  nominated_by: string;
+  reason: string | null;
+  created_at: string;
+}
+
+export interface MatchParticipant {
+  fixture_id: string;
+  team_id: string;
+  player_id: string;
+  source: "recorded" | "default";
 }
 
 export interface TournamentSettings {
@@ -81,6 +116,8 @@ export interface TournamentSettings {
   half_time_min: number;
   knockout_match_duration_min: number | null;
   knockout_half_time_min: number | null;
+  max_substitutions: number | null;
+  mvp_nominations_enabled: boolean;
   transition_min: number | null;
   extra_time_enabled: boolean;
   extra_time_min: number | null;
@@ -196,6 +233,14 @@ export interface Fixture {
   notes: string | null;
   referee_notes: string | null;
   updated_at: string;
+  phase_target_sec: number | null;
+  added_time_sec: number;
+  first_half_elapsed_sec: number | null;
+  second_half_elapsed_sec: number | null;
+  state_version: number;
+  submitted_at: string | null;
+  submitted_by: string | null;
+  abandoned_reason: string | null;
 }
 
 export interface MatchEvent {

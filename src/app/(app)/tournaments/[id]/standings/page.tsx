@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Info } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PageHeader } from "@/components/app/page-header";
@@ -16,6 +18,8 @@ export const metadata: Metadata = { title: "Standings" };
 
 export default async function StandingsPage(props: PageProps<"/tournaments/[id]/standings">) {
   const { id } = await props.params;
+  const sp = await props.searchParams;
+  const provisional = sp.view === "provisional";
   const ctx = await getTournamentContext(id);
   const { tournament: t, settings: s } = ctx;
   const [teams, fixtures, events, decisions] = await Promise.all([getTeams(id), getFixtures(id), getEvents(id), getTiebreakDecisions(id)]);
@@ -27,7 +31,8 @@ export default async function StandingsPage(props: PageProps<"/tournaments/[id]/
       : t.format === "round_robin" || t.format === "league_playoff"
         ? [{ key: "league", title: "League table", scope: { stage: "league" as const }, qualifiers: t.format === "league_playoff" ? s.qualifiers : null }]
         : [];
-  const tables = scopes.map((x) => ({ ...x, standings: standingsFor(s, teams, fixtures, events, decisions, x.scope) }));
+  const tables = scopes.map((x) => ({ ...x, standings: standingsFor(s, teams, fixtures, events, decisions, x.scope, { provisional }) }));
+  const awaiting = fixtures.filter((f) => f.stage !== "knockout" && ["completed", "in_progress", "paused"].includes(f.status));
   const confirmedCount = fixtures.filter((f) => f.stage !== "knockout" && f.status === "confirmed").length;
   const total = fixtures.filter((f) => f.stage !== "knockout" && f.status !== "cancelled").length;
   const criteria = s.tiebreakers.map((c) => TIEBREAKER_LABELS[c]).join(", ");
@@ -43,6 +48,25 @@ export default async function StandingsPage(props: PageProps<"/tournaments/[id]/
         <EmptyState title="No league table for this format" description="Knockout-only tournaments are shown on the Knockout page." />
       ) : (
         <div className="space-y-6">
+          <div className="no-print flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-lg bg-muted p-[3px] text-sm">
+              <Link href={`/tournaments/${id}/standings`} className={cn("rounded-md px-3 py-1", !provisional && "bg-background font-medium shadow-xs")}>Official</Link>
+              <Link href={`/tournaments/${id}/standings?view=provisional`} className={cn("rounded-md px-3 py-1", provisional && "bg-background font-medium shadow-xs")}>Provisional</Link>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {provisional
+                ? "Preview including matches in progress or awaiting confirmation. Not official."
+                : awaiting.length
+                  ? `${awaiting.length} result${awaiting.length === 1 ? "" : "s"} not yet included: ${awaiting.map((f) => `${f.code} ${f.home_score}–${f.away_score}${f.status === "completed" ? " (awaiting confirmation)" : " (live)"}`).join(", ")}.`
+                  : "Only confirmed results are counted."}
+            </span>
+          </div>
+          {provisional ? (
+            <Alert className="border-warning/60 bg-warning/5">
+              <Info />
+              <AlertDescription>Provisional table: includes {awaiting.length} unconfirmed result{awaiting.length === 1 ? "" : "s"}. Points are not official until each result is confirmed.</AlertDescription>
+            </Alert>
+          ) : null}
           <Alert className="no-print">
             <Info />
             <AlertDescription>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeftRight,
   CircleAlert,
@@ -9,11 +9,9 @@ import {
   Flag,
   Goal,
   MapPin,
-  Pause,
-  Play,
   RotateCcw,
-  Square,
   StickyNote,
+  Pencil,
   Timer,
   Trash2,
   UserX,
@@ -40,10 +38,13 @@ import {
   reopenResult,
   saveMatchNotes,
 } from "@/lib/actions/matches";
-import { EVENT_LABELS, elapsedSeconds, formatClockSeconds } from "@/lib/domain";
-import { describeSource, type MatchAlert } from "@/lib/engine";
+import { EVENT_LABELS } from "@/lib/domain";
+import { describeSource, type ClockConfig, type MatchAlert } from "@/lib/engine";
+import { MatchClock } from "./match-clock";
+import { CorrectEventDialog } from "./correct-event";
+import { LineupCard } from "./lineup-card";
 import { assignOfficial, removeOfficial } from "@/lib/actions/fixtures";
-import type { EventType, Fixture, MatchEvent, MatchOfficial, Player, Team } from "@/lib/types";
+import type { EventType, Fixture, MatchEvent, MatchOfficial, MatchParticipant, Player, Team } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface Permissions {
@@ -63,17 +64,8 @@ interface MatchSettings {
   forfeitGoals: number | null;
   minPlayers: number | null;
   secondYellowIsRed: boolean;
+  penaltiesEnabled: boolean;
 }
-
-const PERIOD_LABELS: Record<Fixture["period"], string> = {
-  not_started: "Not started",
-  first_half: "First half",
-  half_time: "Half-time",
-  second_half: "Second half",
-  extra_time: "Extra time",
-  penalties: "Penalty shootout",
-  full_time: "Full time",
-};
 
 type Pending = { type: EventType; teamId: string } | null;
 
@@ -92,6 +84,9 @@ export function Scoreboard({
   settings,
   squadCounts,
   permissions: can,
+  clockConfig,
+  serverNow,
+  participants,
 }: {
   tournamentId: string;
   fixture: Fixture;
@@ -107,17 +102,14 @@ export function Scoreboard({
   alerts: MatchAlert[];
   settings: MatchSettings;
   squadCounts: Record<string, number>;
-  permissions: Permissions;
+  permissions: Permissions & { abandon: boolean };
+  clockConfig: ClockConfig;
+  serverNow: number;
+  participants: MatchParticipant[];
 }) {
   const { pending, run } = useAction();
-  const [now, setNow] = useState(() => Date.now());
   const [entry, setEntry] = useState<Pending>(null);
-  useEffect(() => {
-    if (f.status !== "in_progress") return;
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [f.status]);
-  const elapsed = elapsedSeconds(f, now);
+  const [correcting, setCorrecting] = useState<MatchEvent | null>(null);
   const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const teamOf = (id: string | null) => (id === home?.id ? home : id === away?.id ? away : null);
   const isLive = f.status === "in_progress" || f.status === "paused";
@@ -126,7 +118,7 @@ export function Scoreboard({
   const drawn = f.home_score === f.away_score;
   const showShootout = knockout && (f.period === "penalties" || f.home_penalties !== null || (f.status === "completed" && drawn));
   const unavailable = new Set(alerts.map((a) => a.playerId));
-  const control = (cmd: string) => run(() => controlMatch(tournamentId, f.id, cmd));
+  const control = (command: string) => run(() => controlMatch(tournamentId, f.id, { command, expectedVersion: f.state_version }));
 
   const record = (type: EventType, teamId: string, extra: Partial<MatchEvent> = {}) =>
     run(
@@ -135,8 +127,7 @@ export function Scoreboard({
           fixture_id: f.id,
           event_type: type,
           team_id: teamId,
-          match_second: isLive || f.status === "completed" ? elapsed : null,
-          period: f.period,
+          // The server stamps the period and match time from its own clock.
           ...extra,
         }),
       { success: `${EVENT_LABELS[type]} recorded.`, onSuccess: () => setEntry(null) },
@@ -167,51 +158,24 @@ export function Scoreboard({
             {f.home_penalties !== null && f.away_penalties !== null ? (
               <div className="mt-1 text-sm text-muted-foreground tabular">Penalties {f.home_penalties}–{f.away_penalties}</div>
             ) : null}
-            <div className={cn("mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium tabular", isLive ? "bg-live/10 text-live" : "bg-muted text-muted-foreground")}>
-              <Timer className="size-3.5" />
-              {/* The clock ticks, so server and browser render different seconds. */}
-              <span suppressHydrationWarning>{formatClockSeconds(elapsed)}</span>
-              {settings.matchDurationMin ? <span className="text-xs opacity-70">/ {settings.matchDurationMin}:00</span> : null}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground">{PERIOD_LABELS[f.period]}</div>
           </div>
           <TeamSide team={away} fallback={describeSource(f.away_source)} winner={f.winner_team_id === away?.id && !!away} align="right" />
         </div>
 
-        {can.control && teamsKnown ? (
-          <div className="no-print flex flex-wrap justify-center gap-2 border-t px-4 pt-4">
-            {f.status === "scheduled" ? (
-              <Button size="lg" onClick={() => control("start")} disabled={pending}><Play /> Start match</Button>
-            ) : null}
-            {f.status === "in_progress" ? (
-              <Button size="lg" variant="outline" onClick={() => control("pause")} disabled={pending}><Pause /> Pause</Button>
-            ) : null}
-            {f.status === "paused" && f.period !== "half_time" && f.period !== "penalties" ? (
-              <Button size="lg" onClick={() => control("resume")} disabled={pending}><Play /> Resume</Button>
-            ) : null}
-            {settings.periods === 2 && f.period === "first_half" && isLive ? (
-              <Button size="lg" variant="outline" onClick={() => control("half_time")} disabled={pending}>Half-time</Button>
-            ) : null}
-            {f.period === "half_time" ? (
-              <Button size="lg" onClick={() => control("second_half")} disabled={pending}><Play /> Start second half</Button>
-            ) : null}
-            {knockout && settings.extraTime && isLive && f.period !== "extra_time" && f.period !== "penalties" && drawn ? (
-              <Button size="lg" variant="outline" onClick={() => control("extra_time")} disabled={pending}>Extra time</Button>
-            ) : null}
-            {knockout && isLive && f.period !== "penalties" && drawn ? (
-              <Button size="lg" variant="outline" onClick={() => control("penalties")} disabled={pending}>Penalty shootout</Button>
-            ) : null}
-            {isLive ? (
-              <ConfirmAction
-                trigger={<Button size="lg" variant="destructive" disabled={pending}><Square /> End match</Button>}
-                title="End the match?"
-                description={`Final score ${f.home_score}–${f.away_score}. The result still needs to be confirmed before standings update.`}
-                confirmLabel="End match"
-                action={() => controlMatch(tournamentId, f.id, "end")}
-              />
-            ) : null}
-          </div>
-        ) : null}
+        <div className="border-t px-4 pt-4">
+          <MatchClock
+            tournamentId={tournamentId}
+            fixture={f}
+            config={clockConfig}
+            serverNow={serverNow}
+            canControl={can.control}
+            canAbandon={can.abandon}
+            isAdmin={can.admin}
+            extraTimeEnabled={settings.extraTime}
+            penaltiesEnabled={settings.penaltiesEnabled}
+            teamsKnown={teamsKnown}
+          />
+        </div>
         {!teamsKnown ? (
           <p className="px-4 text-center text-sm text-muted-foreground">Teams for this match are decided by earlier results.</p>
         ) : null}
@@ -298,6 +262,17 @@ export function Scoreboard({
         />
       ) : null}
 
+      {correcting ? (
+        <CorrectEventDialog
+          tournamentId={tournamentId}
+          event={correcting}
+          home={home!}
+          away={away!}
+          players={players}
+          onClose={() => setCorrecting(null)}
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_20rem]">
         {/* Timeline */}
         <Card className="gap-0 py-0">
@@ -332,14 +307,18 @@ export function Scoreboard({
                       </div>
                     </div>
                     {can.record ? (
-                      <ConfirmAction
-                        destructive
-                        trigger={<Button variant="ghost" size="icon-sm" aria-label="Remove event" className="no-print"><Trash2 /></Button>}
-                        title="Remove this event?"
-                        description="The score and discipline records are recalculated."
-                        confirmLabel="Remove"
-                        action={() => deleteEvent(tournamentId, e.id)}
-                      />
+                      <div className="no-print flex shrink-0 gap-0.5">
+                        <Button variant="ghost" size="icon-sm" aria-label="Correct event" onClick={() => setCorrecting(e)}><Pencil /></Button>
+                        <ConfirmAction
+                          destructive
+                          trigger={<Button variant="ghost" size="icon-sm" aria-label="Remove event"><Trash2 /></Button>}
+                          title="Remove this event?"
+                          description="The score, statistics and discipline records are recalculated. The original stays in the audit log."
+                          reason={{ label: "Why is it being removed?", placeholder: "e.g. Recorded twice by mistake", minLength: 3 }}
+                          confirmLabel="Remove"
+                          action={(reason) => deleteEvent(tournamentId, e.id, reason)}
+                        />
+                      </div>
                     ) : null}
                   </li>
                 );
@@ -390,12 +369,23 @@ export function Scoreboard({
                   <ForfeitButton tournamentId={tournamentId} fixtureId={f.id} home={home!} away={away!} forfeitGoals={settings.forfeitGoals} />
                 )
               ) : null}
-              {can.admin && isLive && events.length === 0 ? (
+              {can.admin && (isLive || f.status === "abandoned") && events.length === 0 ? (
                 <Button variant="ghost" size="sm" className="w-full" disabled={pending} onClick={() => control("reset_to_scheduled")}>Reset to not started</Button>
               ) : null}
             </CardContent>
           </Card>
 
+
+          {teamsKnown ? (
+            <LineupCard
+              tournamentId={tournamentId}
+              fixtureId={f.id}
+              teams={[home!, away!]}
+              players={players}
+              participants={participants}
+              editable={can.admin || (can.record && f.status !== "confirmed")}
+            />
+          ) : null}
 
           {can.admin || can.refereeNotes ? (
             <NotesCard tournamentId={tournamentId} fixture={f} canMatch={can.admin} canReferee={can.refereeNotes} />

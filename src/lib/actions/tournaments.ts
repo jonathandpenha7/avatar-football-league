@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireSession, getTournamentContext } from "@/lib/data/session";
 import { getTemplate } from "@/lib/templates";
-import { createTournamentSchema, generalSchema, pitchSchema, settingsSchema } from "@/lib/validation";
+import { blockedPeriodSchema, createTournamentSchema, generalSchema, pitchSchema, settingsSchema } from "@/lib/validation";
 import type { ActionResult } from "@/lib/types";
 import { UUID, dbError, invalid, ok, refreshTournament } from "./utils";
 
@@ -222,4 +222,19 @@ export async function addDecision(tournamentId: string, question: string, contex
   if (error) return dbError(error);
   refreshTournament(tournamentId);
   return ok();
+}
+
+/** Save the tournament's scheduled breaks only. Fixtures are not moved; overlaps show as warnings. */
+export async function saveBreaks(tournamentId: string, breaks: unknown): Promise<ActionResult> {
+  const parsed = z.array(blockedPeriodSchema).max(20).safeParse(breaks);
+  if (!parsed.success) return invalid(parsed.error);
+  const { supabase } = await requireSession();
+  const { error, count } = await supabase
+    .from("tournament_settings")
+    .update({ blocked_periods: parsed.data }, { count: "exact" })
+    .eq("tournament_id", tournamentId);
+  if (error) return dbError(error);
+  if (!count) return { ok: false, error: "You do not have permission to change the schedule." };
+  refreshTournament(tournamentId);
+  return ok(undefined, "Breaks saved. Fixtures were not moved.");
 }

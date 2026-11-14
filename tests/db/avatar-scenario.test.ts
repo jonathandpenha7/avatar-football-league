@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { asUser, createTestDb, createUser, type TestDb } from "./harness";
+import { asUser, createTestDb, createUser, type TestDb, playMatch } from "./harness";
 import { avatarFootballLeague } from "@/lib/templates";
 import { createTournamentSchema } from "@/lib/validation";
 import { DEFAULT_SETTINGS } from "@/components/tournament/settings-sections";
@@ -110,13 +110,13 @@ describe("Avatar Football League end to end", () => {
     for (const f of league) {
       const hs = strength.get(f.home_team_id!)!;
       const as = strength.get(f.away_team_id!)!;
-      await db.query("update public.fixtures set status = 'in_progress' where id = $1", [f.id]);
+      await playMatch(db, f.id, "started");
       const goals = Math.abs(hs - as) % 3 + (hs > as ? 1 : 0);
       const scorer = hs >= as ? f.home_team_id : f.away_team_id;
       for (let g = 0; g < goals; g++) {
         await db.query("insert into public.match_events (tournament_id, fixture_id, event_type, team_id) values ($1, $2, 'goal', $3)", [tid, f.id, scorer]);
       }
-      await db.query("update public.fixtures set status = 'completed' where id = $1", [f.id]);
+      await playMatch(db, f.id, "completed");
       await db.query("select public.confirm_match_result($1, null)", [f.id]);
     }
     const [s] = await q<TournamentSettings>("select * from public.tournament_settings where tournament_id = $1", [tid]);
@@ -138,9 +138,9 @@ describe("Avatar Football League end to end", () => {
   it("advances semi-final winners into the final and crowns a champion", async () => {
     for (const code of ["SF1", "SF2"]) {
       const [f] = await q<Fixture>("select * from public.fixtures where tournament_id = $1 and code = $2", [tid, code]);
-      await db.query("update public.fixtures set status = 'in_progress' where id = $1", [f.id]);
+      await playMatch(db, f.id, "started");
       await db.query("insert into public.match_events (tournament_id, fixture_id, event_type, team_id) values ($1, $2, 'goal', $3)", [tid, f.id, f.away_team_id]);
-      await db.query("update public.fixtures set status = 'completed' where id = $1", [f.id]);
+      await playMatch(db, f.id, "completed");
       await db.query("select public.confirm_match_result($1, null)", [f.id]);
     }
     const [sf1] = await q<Fixture>("select * from public.fixtures where tournament_id = $1 and code = 'SF1'", [tid]);
@@ -148,8 +148,8 @@ describe("Avatar Football League end to end", () => {
     const [final] = await q<Fixture>("select * from public.fixtures where tournament_id = $1 and code = 'F'", [tid]);
     expect(final.home_team_id).toBe(sf1.away_team_id);
     expect(final.away_team_id).toBe(sf2.away_team_id);
-    await db.query("update public.fixtures set status = 'in_progress' where id = $1", [final.id]);
-    await db.query("update public.fixtures set status = 'completed' where id = $1", [final.id]);
+    await playMatch(db, final.id, "started");
+    await playMatch(db, final.id, "completed");
     await db.query("insert into public.match_events (tournament_id, fixture_id, event_type, team_id) values ($1, $2, 'shootout_goal', $3)", [tid, final.id, final.home_team_id]);
     const [done] = await q<Fixture>("select * from public.confirm_match_result($1, null)", [final.id]);
     expect(done.winner_team_id).toBe(final.home_team_id);

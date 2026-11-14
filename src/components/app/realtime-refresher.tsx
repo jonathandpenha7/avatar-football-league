@@ -39,8 +39,16 @@ export function RealtimeRefresher({
         refresh,
       )
       .subscribe((s: string) => setStatus(s === "SUBSCRIBED" ? "live" : s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED" ? "offline" : "connecting"));
+    // Recover after a dropped connection or a phone waking up: fetch the latest state.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       if (timer.current) clearTimeout(timer.current);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", onVisible);
       supabase.removeChannel(channel);
     };
   }, [router, tournamentId, fixtureId]);

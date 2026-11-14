@@ -5,6 +5,7 @@ import {
   CalendarRange,
   CircleAlert,
   ClipboardCheck,
+  Coffee,
   ListOrdered,
   MapPin,
   Plus,
@@ -34,9 +35,13 @@ import {
   getPlayers,
   getTeams,
   getTiebreakDecisions,
+  getNominations,
+  getParticipants,
 } from "@/lib/data/loaders";
-import { FORMAT_LABELS, LIVE_STATUSES, formatDate, groupLabels, hasLeaguePhase, standingsFor } from "@/lib/domain";
-import { formatClock, toMinutes } from "@/lib/engine";
+import { FORMAT_LABELS, LIVE_STATUSES, PHASE_LABELS, fixtureDuration, formatDate, groupLabels, hasLeaguePhase, nowInZone, standingsFor } from "@/lib/domain";
+import { activeBreak, computeStats, formatClock, scheduleBreaks, toMinutes } from "@/lib/engine";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Progress } from "@/components/ui/progress";
 import { pendingTasks } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +59,7 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
     getOfficials(id),
     getTiebreakDecisions(id),
   ]);
+  const [participants, nominations] = await Promise.all([getParticipants(id), getNominations(id)]);
   const { count: pendingRegistrations } = ctx.isAdmin
     ? await ctx.supabase.from("registrations").select("id", { count: "exact", head: true }).eq("tournament_id", id).eq("status", "pending")
     : { count: 0 };
@@ -79,6 +85,22 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
   const standings = showLeague ? standingsFor(s, teams, fixtures, events, tiebreaks, { stage: "league" }) : null;
   const nextForMe = fixtures.find((f) => myFixtureIds.has(f.id) && ["scheduled", "in_progress", "paused", "completed"].includes(f.status));
   const awaitingConfirmation = fixtures.find((f) => f.status === "completed") ?? live[0];
+
+  // Top scorer from confirmed matches only; never from provisional results.
+  const stats = computeStats(
+    fixtures.map((f) => ({ id: f.id, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status })),
+    events.map((e) => ({ fixtureId: e.fixture_id, eventType: e.event_type, teamId: e.team_id, playerId: e.player_id })),
+    participants.map((p) => ({ fixtureId: p.fixture_id, playerId: p.player_id })),
+  );
+  const playerName = new Map(players.map((p) => [p.id, p.full_name]));
+  const topScorers = stats.mostGoals.playerIds.map((pid) => playerName.get(pid) ?? "Unknown");
+  const items = fixtures.map((f) => ({ id: f.id, code: f.code, stage: f.stage, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, pitchId: f.pitch_id, date: f.scheduled_date, start: toMinutes(f.scheduled_time), durationMin: fixtureDuration(f, s), status: f.status }));
+  const breaks = scheduleBreaks((s.blocked_periods ?? []).map((b) => ({ date: b.date ?? null, start: toMinutes(b.start) ?? 0, end: toMinutes(b.end) ?? 0, pitchId: b.pitch_id ?? null, label: b.label ?? null, description: b.description ?? null })), items, t.start_date);
+  const now = nowInZone(t.timezone);
+  const currentBreak = activeBreak(breaks, now.date, now.minutes);
+  const nextMatch = fixtures.find((f) => f.status === "scheduled" && f.scheduled_time);
+  const counted = fixtures.filter((f) => f.status !== "cancelled");
+  const progress = counted.length ? Math.round((confirmed.length / counted.length) * 100) : 0;
 
   return (
     <>
@@ -136,6 +158,33 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
         <StatCard label="Upcoming" value={fixtures.filter((f) => f.status === "scheduled").length} icon={CalendarClock} hint={live.length ? `${live.length} live now` : undefined} className="col-span-2 lg:col-span-1" />
       </div>
 
+      {currentBreak ? (
+        <Alert className="mb-6 border-warning/60 bg-warning/10 [&>svg]:text-amber-700">
+          <Coffee />
+          <AlertTitle>{currentBreak.label} until {formatClock(currentBreak.end)}</AlertTitle>
+          <AlertDescription>
+            {currentBreak.description ? `${currentBreak.description} ` : ""}
+            {nextMatch ? `Next match: ${nextMatch.code} at ${formatClock(toMinutes(nextMatch.scheduled_time))}${nextMatch.pitch_id ? ` on ${pitchName.get(nextMatch.pitch_id)}` : ""}.` : ""}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {counted.length ? (
+        <Card className="mb-6 gap-2 px-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+            <span className="font-medium">Tournament progress</span>
+            <span className="text-muted-foreground tabular">{confirmed.length} of {counted.length} results confirmed{live.length ? ` · ${live.length} live` : ""}</span>
+          </div>
+          <Progress value={progress} />
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+            <span>Top scorer: <span className="font-medium text-foreground">{topScorers.length ? `${topScorers.join(", ")} (${stats.mostGoals.goals})` : "none yet"}</span></span>
+            <span>MVP nominations: <Link href={`${base}/awards`} className="font-medium text-foreground hover:underline">{nominations.length}</Link></span>
+            {nextMatch && !currentBreak ? <span>Next match: <span className="font-medium text-foreground">{nextMatch.code} at {formatClock(toMinutes(nextMatch.scheduled_time))}</span></span> : null}
+            {breaks.length ? <span>Breaks: {breaks.map((b) => `${b.label} ${formatClock(b.start)}`).join(", ")}</span> : null}
+          </div>
+        </Card>
+      ) : null}
+
       {live.length ? (
         <Card className="mb-6 ring-live/30">
           <CardHeader>
@@ -145,7 +194,14 @@ export default async function DashboardPage(props: PageProps<"/tournaments/[id]"
           </CardHeader>
           <CardContent className="-mx-4 -mb-4 divide-y border-t">
             {live.map((f) => (
-              <FixtureRow key={f.id} fixture={f} teams={teamMap} pitchName={f.pitch_id ? pitchName.get(f.pitch_id) : null} href={`${base}/matches/${f.id}`} />
+              <FixtureRow
+                key={f.id}
+                fixture={f}
+                teams={teamMap}
+                pitchName={f.pitch_id ? pitchName.get(f.pitch_id) : null}
+                href={`${base}/matches/${f.id}`}
+                footer={<span className="font-semibold text-live">{f.status === "paused" && f.period !== "half_time" ? `${PHASE_LABELS[f.period]} · paused` : PHASE_LABELS[f.period]}</span>}
+              />
             ))}
           </CardContent>
         </Card>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   CalendarCog,
+  Coffee,
   CircleAlert,
   Download,
   Eye,
@@ -30,7 +31,8 @@ import { FeasibilityPanel } from "@/components/tournament/feasibility-panel";
 import type { SettingsDraft } from "@/components/tournament/settings-sections";
 import { useAction } from "@/hooks/use-action";
 import { generateFixtures, setFixturesPublished, swapFixtureSlots, updateFixture } from "@/lib/actions/fixtures";
-import { describeSource, formatClock, toMinutes, type Conflict } from "@/lib/engine";
+import { describeSource, formatClock, formatDuration, fromMinutes, toMinutes, type BreakItem, type Conflict, type RestPeriod, type ScheduleSummary } from "@/lib/engine";
+import { BreaksManager } from "@/components/tournament/breaks-manager";
 import { formatDate } from "@/lib/domain";
 import { downloadCsv, slugify } from "@/lib/csv";
 import type { Fixture, Pitch, Team, Tournament } from "@/lib/types";
@@ -44,6 +46,9 @@ export function FixturesView({
   pitches,
   conflicts,
   isAdmin,
+  breaks,
+  summary,
+  rest,
 }: {
   tournament: Tournament;
   settings: SettingsDraft;
@@ -52,6 +57,9 @@ export function FixturesView({
   pitches: Pitch[];
   conflicts: Conflict[];
   isAdmin: boolean;
+  breaks: BreakItem[];
+  summary: ScheduleSummary;
+  rest: RestPeriod[];
 }) {
   const { pending, run } = useAction();
   const [view, setView] = useState<"grid" | "list">("grid");
@@ -93,6 +101,17 @@ export function FixturesView({
     }
     return [...map.entries()].sort(([a], [b]) => (a === "unscheduled" ? 1 : b === "unscheduled" ? -1 : a.localeCompare(b)));
   }, [fixtures]);
+  type Entry = { kind: "slot"; at: string; slot: [string, Fixture[]] } | { kind: "break"; at: string; b: BreakItem };
+  const breakAt = (b: BreakItem) => `${b.date ?? t.start_date ?? ""}|${fromMinutes(b.start)}`;
+  const timeline: Entry[] = [
+    ...slots.map(([key, list]) => ({ kind: "slot" as const, at: key === "unscheduled" ? "~" : key, slot: [key, list] as [string, Fixture[]] })),
+    ...breaks.map((b) => ({ kind: "break" as const, at: breakAt(b), b })),
+  ].sort((a, b) => a.at.localeCompare(b.at) || (a.kind === "break" ? -1 : 1));
+  type ListEntry = { kind: "fixture"; at: string; f: Fixture } | { kind: "break"; at: string; b: BreakItem };
+  const listTimeline: ListEntry[] = [
+    ...fixtures.map((f) => ({ kind: "fixture" as const, at: f.scheduled_date && f.scheduled_time ? `${f.scheduled_date}|${f.scheduled_time.slice(0, 5)}` : "~", f })),
+    ...breaks.map((b) => ({ kind: "break" as const, at: breakAt(b), b })),
+  ].sort((a, b) => a.at.localeCompare(b.at) || (a.kind === "break" ? -1 : 1));
   const multiDay = new Set(fixtures.map((f) => f.scheduled_date).filter(Boolean)).size > 1;
 
   return (
@@ -158,6 +177,24 @@ export function FixturesView({
         </div>
       ) : null}
 
+      {fixtures.length ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Card className="gap-3 px-4">
+            <div className="text-sm font-semibold">Schedule summary</div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3">
+              <SummaryItem label="Matches" value={`${summary.totalMatches}${summary.scheduledMatches < summary.totalMatches ? ` (${summary.scheduledMatches} timed)` : ""}`} />
+              <SummaryItem label="Playing time" value={formatDuration(summary.totalPlayingMin)} />
+              <SummaryItem label="Break time" value={summary.totalBreakMin ? formatDuration(summary.totalBreakMin) : "None"} />
+              <SummaryItem label="First kick-off" value={summary.firstStart !== null ? formatClock(summary.firstStart) : "TBC"} />
+              <SummaryItem label="Last final whistle" value={summary.lastEnd !== null ? formatClock(summary.lastEnd) : "TBC"} />
+              <SummaryItem label="Breaks" value={String(summary.breaks)} />
+              {pitches.map((p) => <SummaryItem key={p.id} label={p.name} value={`${summary.matchesPerPitch[p.id] ?? 0} matches`} />)}
+            </dl>
+          </Card>
+          <BreaksManager tournamentId={t.id} configured={settings.blocked_periods} items={breaks} pitches={pitches} isAdmin={isAdmin} />
+        </div>
+      ) : null}
+
       {t.fixtures_published ? (
         <Badge variant="secondary" className="bg-success/15 text-success">Published</Badge>
       ) : fixtures.length ? (
@@ -200,7 +237,10 @@ export function FixturesView({
               <div className="px-3 py-2">Kick-off</div>
               {pitches.map((p) => <div key={p.id} className="border-l px-3 py-2">{p.name}</div>)}
             </div>
-            {slots.map(([key, list]) => {
+            {timeline.map((entry) => entry.kind === "break" ? (
+              <BreakRow key={entry.b.key} b={entry.b} pitchName={entry.b.pitchId ? pitchMap.get(entry.b.pitchId)?.name : undefined} />
+            ) : (() => {
+              const [key, list] = entry.slot;
               const [date, time] = key.split("|");
               const unplaced = key === "unscheduled" ? list : list.filter((f) => !f.pitch_id || !pitchMap.has(f.pitch_id));
               return (
@@ -229,14 +269,16 @@ export function FixturesView({
                   ) : null}
                 </div>
               );
-            })}
+            })())}
           </div>
         </Card>
         ) : null}
         {/* Phones always get the list: the pitch grid needs a wide screen. */}
         <Card className={cn("gap-0 divide-y py-0", view === "grid" && "md:hidden")}>
-          {fixtures.map((f) => (
-            <div key={f.id} className={cn("grid grid-cols-[4rem_1fr_auto] items-center gap-3 px-3 py-2 text-sm", conflictIds.has(f.id) && "bg-destructive/5")}>
+          {listTimeline.map((entry) => entry.kind === "break" ? (
+            <BreakRow key={entry.b.key} b={entry.b} pitchName={entry.b.pitchId ? pitchMap.get(entry.b.pitchId)?.name : undefined} compact />
+          ) : ((f) => (
+            <div key={f.id} className={cn("grid grid-cols-[4rem_1fr_auto] items-center gap-3 border-l-2 border-l-transparent px-3 py-2 text-sm", f.status === "in_progress" || f.status === "paused" ? "border-l-live bg-live/5" : f.status === "confirmed" ? "text-muted-foreground" : "", conflictIds.has(f.id) && "bg-destructive/5")}>
               <div className="text-xs tabular text-muted-foreground">
                 <div className="font-medium text-foreground">{f.scheduled_time ? formatClock(toMinutes(f.scheduled_time)) : "TBC"}</div>
                 {f.code}
@@ -252,10 +294,12 @@ export function FixturesView({
                 ) : null}
               </div>
             </div>
-          ))}
+          ))(entry.f))}
         </Card>
         </>
       )}
+
+      {rest.length ? <RestPeriodsCard rest={rest} teams={teams} /> : null}
 
       {editing ? (
         <EditFixtureDialog
@@ -467,5 +511,64 @@ function EditFixtureDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SummaryItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="font-medium tabular">{value}</dd>
+    </div>
+  );
+}
+
+/** A tournament break in the timeline, clearly distinct from matches. */
+function BreakRow({ b, pitchName, compact }: { b: BreakItem; pitchName?: string; compact?: boolean }) {
+  return (
+    <div className={cn("flex items-center gap-3 border-y border-dashed border-warning/60 bg-warning/10 px-3 text-sm", compact ? "py-2" : "py-2.5")}>
+      <Coffee className="size-4 shrink-0 text-amber-700 dark:text-warning" />
+      <span className="w-[4.25rem] shrink-0 text-xs font-medium tabular">{formatClock(b.start)}</span>
+      <span className="min-w-0 flex-1">
+        <span className="font-medium">{b.label}</span>
+        <span className="text-muted-foreground"> · {b.durationMin} min, until {formatClock(b.end)}{pitchName ? ` · ${pitchName} only` : ""}</span>
+        {b.description ? <span className="block text-xs text-muted-foreground">{b.description}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function RestPeriodsCard({ rest, teams }: { rest: RestPeriod[]; teams: Team[] }) {
+  const byTeam = teams
+    .map((t) => ({ team: t, list: rest.filter((r) => r.teamId === t.id) }))
+    .filter((x) => x.list.length);
+  return (
+    <Card className="gap-0 py-0">
+      <div className="border-b px-4 py-3">
+        <div className="text-sm font-semibold">Team rest periods</div>
+        <p className="text-xs text-muted-foreground">Time between the end of one match and the start of the team&apos;s next one.</p>
+      </div>
+      <div className="divide-y">
+        {byTeam.map(({ team, list }) => {
+          const min = Math.min(...list.map((r) => r.restMin));
+          return (
+            <details key={team.id} className="group px-4 py-2 text-sm">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2">
+                <span className="font-medium">{team.name}</span>
+                <span className={cn("text-xs tabular", min <= 5 ? "text-amber-700 dark:text-warning" : "text-muted-foreground")}>shortest rest {min} min</span>
+              </summary>
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {list.map((r) => (
+                  <li key={`${r.previousCode}-${r.nextCode}`} className="flex justify-between gap-2 tabular">
+                    <span>{r.previousCode} ends {formatClock(r.previousEnd)} → {r.nextCode} starts {formatClock(r.nextStart)}</span>
+                    <span className="font-medium text-foreground">{r.restMin} min</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/app/empty-state";
 import { FixtureRow } from "@/components/tournament/fixture-row";
 import type { Fixture, Pitch, Team } from "@/lib/types";
+import { PHASE_LABELS } from "@/lib/domain";
 
 const VIEWS = [
   ["today", "Today"],
@@ -47,7 +48,12 @@ export function MatchCentre({
   const teamMap = new Map(teams.map((t) => [t.id, t]));
   const pitchName = new Map(pitches.map((p) => [p.id, p.name]));
   const mine = new Set(myFixtureIds);
-  const refLine = (f: Fixture) => {
+  const phase = (f: Fixture) =>
+    f.status === "in_progress" || f.status === "paused"
+      ? <span className="mr-2 font-semibold text-live">{PHASE_LABELS[f.period]}{f.status === "paused" && f.period !== "half_time" ? " · paused" : ""}</span>
+      : f.status === "abandoned" ? <span className="mr-2 font-semibold text-destructive">Abandoned</span> : null;
+  const refLine = (f: Fixture) => <>{phase(f)}{refName(f)}</>;
+  const refName = (f: Fixture) => {
     if (f.status === "confirmed" || f.status === "cancelled") return referees[f.id]?.length ? <span className="text-muted-foreground">Ref: {referees[f.id].join(", ")}</span> : null;
     if (referees[f.id]?.length) return <span className="text-muted-foreground">Ref: {referees[f.id].join(", ")}</span>;
     return isAdmin ? <span className="font-medium text-amber-700 dark:text-warning">No referee yet</span> : null;

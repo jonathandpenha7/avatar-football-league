@@ -3,7 +3,10 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/app/page-header";
-import { TeamMark } from "@/components/app/team-name";
+import { TeamMark, TeamName } from "@/components/app/team-name";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getTournamentContext } from "@/lib/data/session";
 import { getEvents, getFixtures, getPlayers, getSuspensions, getTeams } from "@/lib/data/loaders";
 import { computeStats, playerEligibility } from "@/lib/engine";
@@ -38,7 +41,7 @@ export default async function TeamPage(props: PageProps<"/tournaments/[id]/teams
     ]),
   );
   const stats = computeStats(
-    fixtures.map((f) => ({ id: f.id, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status })),
+    fixtures.map((f) => ({ id: f.id, code: f.code, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status, homePenalties: f.home_penalties, awayPenalties: f.away_penalties })),
     events.map((e) => ({ fixtureId: e.fixture_id, eventType: e.event_type, teamId: e.team_id, playerId: e.player_id, assistPlayerId: e.assist_player_id })),
   );
   const teamStat = stats.teams.find((t) => t.teamId === teamId);
@@ -69,6 +72,26 @@ export default async function TeamPage(props: PageProps<"/tournaments/[id]/teams
         stats={Object.fromEntries(stats.players.map((p) => [p.playerId, p]))}
         nextFixtureLabel={nextFixture ? `${nextFixture.code}${nextFixture.scheduled_time ? ` at ${nextFixture.scheduled_time.slice(0, 5)}` : ""}` : null}
       />
+      <Card className="mt-6 gap-0 py-0">
+        <CardHeader className="border-b py-3"><CardTitle>Match by match</CardTitle></CardHeader>
+        {teamStat?.matches.length ? (
+          <Table className="tabular">
+            <TableHeader><TableRow><TableHead>Match</TableHead><TableHead>Opponent</TableHead><TableHead className="text-center">Score</TableHead><TableHead className="text-center">Result</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {teamStat.matches.map((m) => (
+                <TableRow key={m.fixtureId}>
+                  <TableCell><Link href={`/tournaments/${id}/matches/${m.fixtureId}`} className="hover:underline">{m.code}</Link></TableCell>
+                  <TableCell className="max-w-0"><TeamName team={teams.find((t) => t.id === m.opponentId)} /></TableCell>
+                  <TableCell className="text-center">{m.goalsFor}–{m.goalsAgainst}{m.penalties ? <span className="text-xs text-muted-foreground"> ({m.penalties} p)</span> : null}</TableCell>
+                  <TableCell className="text-center"><Badge variant="secondary" className={m.result === "W" ? "bg-success/15 text-success" : m.result === "L" ? "bg-destructive/10 text-destructive" : ""}>{m.result}</Badge></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        ) : (
+          <p className="p-4 text-sm text-muted-foreground">No confirmed matches yet.</p>
+        )}
+      </Card>
     </>
   );
 }

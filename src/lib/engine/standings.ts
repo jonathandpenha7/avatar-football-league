@@ -29,7 +29,11 @@ export interface StandingsOptions {
   /** Fair-play penalty points per team (lower is better). */
   fairPlay?: Record<string, number>;
   decisions?: TiebreakDecision[];
+  /** Preview only: also count matches in progress or awaiting confirmation. Never used for official standings. */
+  includeProvisional?: boolean;
 }
+
+const PROVISIONAL = new Set(["confirmed", "completed", "in_progress", "paused"]);
 
 export interface StandingRow {
   teamId: string;
@@ -89,7 +93,8 @@ function tabulate(teamIds: string[], fixtures: ResultFixture[], opts: StandingsO
     });
   }
   for (const f of fixtures) {
-    if (f.status !== "confirmed" || !f.homeTeamId || !f.awayTeamId) continue;
+    const counted = opts.includeProvisional ? PROVISIONAL.has(f.status) : f.status === "confirmed";
+    if (!counted || !f.homeTeamId || !f.awayTeamId) continue;
     const home = rows.get(f.homeTeamId);
     const away = rows.get(f.awayTeamId);
     if (!home || !away) continue;

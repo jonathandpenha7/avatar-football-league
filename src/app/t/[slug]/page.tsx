@@ -25,6 +25,11 @@ interface PublicData {
   rules: { id: string; category: string; title: string; body: string }[];
   announcements: { id: string; title: string; body: string; created_at: string }[];
   tiebreak_decisions: { scope: string; ordered_team_ids: string[] }[];
+  breaks?: { date?: string | null; start: string; end: string; label?: string | null; description?: string | null; pitch_id?: string | null }[];
+  awards?: {
+    champion_team_id: string | null; runner_up_team_id: string | null; third_place_team_id: string | null;
+    mvp_player_id: string | null; mvp_reason: string | null; top_scorer_player_ids: string[]; top_scorer_goals: number | null; finalised: boolean;
+  } | null;
 }
 
 async function load(slug: string) {
@@ -121,6 +126,25 @@ export default async function PublicTournamentPage(props: PageProps<"/t/[slug]">
             <p className="text-sm whitespace-pre-line text-muted-foreground">{a.body}</p>
           </Card>
         ))}
+        {data.awards ? (
+          <Card className="gap-3 px-4 ring-primary/30">
+            <div className="flex items-center gap-2 text-lg font-semibold"><Trophy className="size-5 text-primary" /> Final results</div>
+            <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+              {[
+                ["Winners", data.awards.champion_team_id ? teamMap.get(data.awards.champion_team_id)?.name : null],
+                ["Runners up", data.awards.runner_up_team_id ? teamMap.get(data.awards.runner_up_team_id)?.name : null],
+                ...(data.awards.third_place_team_id ? [["Third place", teamMap.get(data.awards.third_place_team_id)?.name]] : []),
+                ["MVP", data.awards.mvp_player_id ? playerMap.get(data.awards.mvp_player_id)?.full_name : null],
+                ["Most goals", data.awards.top_scorer_player_ids.length ? `${data.awards.top_scorer_player_ids.map((id) => playerMap.get(id)?.full_name ?? "Unknown").join(", ")} (${data.awards.top_scorer_goals})` : null],
+              ].map(([label, value]) => (
+                <div key={label as string} className="rounded-lg border p-3">
+                  <dt className="text-xs text-muted-foreground">{label}</dt>
+                  <dd className="font-semibold">{value ?? "To be confirmed"}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+        ) : null}
         {live.length ? (
           <Card className="gap-0 py-0 ring-live/30">
             <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-semibold"><span className="size-2 animate-pulse rounded-full bg-live" /> Live now</div>
@@ -152,6 +176,15 @@ export default async function PublicTournamentPage(props: PageProps<"/t/[slug]">
               {[...byDate.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, list]) => (
                 <section key={date}>
                   <h2 className="mb-2 text-sm font-semibold">{date ? formatDate(date) : "Date to be confirmed"}{date === today ? " (today)" : ""}</h2>
+                  {(data.breaks ?? []).filter((b) => (b.date ?? t.start_date) === date).length ? (
+                    <div className="mb-2 flex flex-wrap gap-2 text-xs">
+                      {(data.breaks ?? []).filter((b) => (b.date ?? t.start_date) === date).map((b, i) => (
+                        <span key={i} className="rounded-full border border-dashed border-warning/60 bg-warning/10 px-2.5 py-1">
+                          {b.label ?? "Break"}: {formatClock(toMinutes(b.start))} to {formatClock(toMinutes(b.end))}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <Card className="gap-0 divide-y py-0">
                     {list.map((f) => <FixtureRow key={f.id} fixture={f} teams={teamMap} pitchName={f.pitch_id ? pitchName.get(f.pitch_id) : null} />)}
                   </Card>

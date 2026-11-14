@@ -61,6 +61,8 @@ export const DEFAULT_SETTINGS: SettingsDraft = {
   half_time_min: 0,
   knockout_match_duration_min: null,
   knockout_half_time_min: null,
+  max_substitutions: null,
+  mvp_nominations_enabled: false,
   transition_min: null,
   extra_time_enabled: false,
   extra_time_min: null,
@@ -505,6 +507,9 @@ export function MatchSection({
     <div className="grid gap-5">
       <TimingEditor settings={settings} onChange={onChange} />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field label="Substitutions per team per match" htmlFor="m-subs" hint="Leave empty for unlimited rolling substitutions.">
+          <NumberInput id="m-subs" min={0} max={50} placeholder="Unlimited" value={settings.max_substitutions} onChange={(v) => onChange({ max_substitutions: v })} />
+        </Field>
         <Field label="Extra break before the knockouts (minutes)" htmlFor="m-kb" hint="On top of the normal changeover. Usually 0.">
           <NumberInput id="m-kb" min={0} max={240} value={settings.knockout_break_min} onChange={(v) => onChange({ knockout_break_min: v ?? 0 })} />
         </Field>
@@ -592,6 +597,13 @@ export function DisciplineSection({ settings, onChange }: { settings: SettingsDr
         ) : null}
         <UndecidedNumber id="d-forfeit" label="Goals awarded for a forfeit" hint="The winner is awarded this score, e.g. 3–0." value={settings.forfeit_goals} onChange={(v) => onChange({ forfeit_goals: v })} min={0} max={20} suggestion={3} />
       </div>
+      <Toggle
+        id="d-mvp"
+        label="Referees and scorekeepers can nominate MVP candidates"
+        hint="The organisers always make the final MVP choice."
+        checked={settings.mvp_nominations_enabled}
+        onChange={(v) => onChange({ mvp_nominations_enabled: v })}
+      />
       <Toggle
         id="d-refconf"
         label="Assigned referees can confirm results"

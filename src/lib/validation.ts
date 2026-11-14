@@ -35,6 +35,7 @@ export const blockedPeriodSchema = z
     end: time,
     pitch_id: z.string().uuid().optional().nullable(),
     label: optionalText(80),
+    description: optionalText(300),
   })
   .refine((b) => b.end > b.start, "Blocked period must end after it starts");
 
@@ -86,6 +87,8 @@ export const settingsSchema = z
     half_time_min: z.number().int().min(0).max(60),
     knockout_match_duration_min: optionalInt(1, 240),
     knockout_half_time_min: optionalInt(0, 60),
+    max_substitutions: optionalInt(0, 50),
+    mvp_nominations_enabled: z.boolean(),
     transition_min: optionalInt(0, 120),
     extra_time_enabled: z.boolean(),
     extra_time_min: optionalInt(1, 60),

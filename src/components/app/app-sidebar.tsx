@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Award,
   BarChart3,
   Check,
   ChevronsUpDown,
@@ -73,7 +74,9 @@ const NAV: { label: string; items: NavItem[] }[] = [
       { href: "/matches", label: "Match centre", icon: Timer },
       { href: "/fixtures", label: "Fixtures and schedule", icon: CalendarRange },
       { href: "/standings", label: "Standings", icon: ListOrdered },
+      { href: "/review", label: "League review", icon: ClipboardList, knockoutOnly: true },
       { href: "/knockout", label: "Knockout", icon: Network, knockoutOnly: true },
+      { href: "/awards", label: "Awards and results", icon: Award },
     ],
   },
   {

@@ -10,3 +10,5 @@ export * from "./qualification";
 export * from "./discipline";
 export * from "./stats";
 export * from "./time";
+export * from "./timer";
+export * from "./breaks";

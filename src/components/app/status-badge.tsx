@@ -11,6 +11,7 @@ const fixtureTone: Record<FixtureStatus, string> = {
   confirmed: "bg-success/15 text-success",
   postponed: "bg-muted text-muted-foreground line-through",
   cancelled: "bg-destructive/10 text-destructive",
+  abandoned: "bg-destructive/10 text-destructive",
 };
 
 export function FixtureStatusBadge({ status, className }: { status: FixtureStatus; className?: string }) {

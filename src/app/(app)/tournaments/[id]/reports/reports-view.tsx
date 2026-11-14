@@ -20,6 +20,10 @@ export interface ReportData {
   suspensions: { player: string; matches: number; reason: string; status: string }[];
   scorers: { player: string; team: string; goals: number; assists: number }[];
   summary: { matches: number; goals: number; teams: number; players: number; champion: string | null };
+  awards: { confirmed: boolean; winners: string; runnersUp: string; mvp: string; mostGoals: string };
+  knockout: { round: string; home: string; away: string; score: string; winner: string }[];
+  teamStats: { team: string; p: number; w: number; d: number; l: number; gf: number; ga: number; gd: number; cs: number; y: number; r: number }[];
+  playerStats: { player: string; team: string; mp: number; goals: number; pens: number; og: number; y: number; r: number; fouls: number }[];
 }
 
 type Section = { title?: string; head: string[]; body: (string | number)[][] };
@@ -88,14 +92,18 @@ export function ReportsView({ data, backup }: { data: ReportData; backup: Record
     { icon: ShieldAlert, title: "Discipline report", desc: `${data.discipline.length} incidents, ${data.suspensions.length} suspensions.`, csv: () => downloadCsv(`${base}-discipline.csv`, data.discipline), pdf: () => pdf(`${t.name}: discipline`, sub, disciplineSections, `${base}-discipline.pdf`) },
     {
       icon: Trophy,
-      title: "Tournament summary",
-      desc: "Headline numbers, standings, top scorers and discipline.",
-      csv: () => downloadCsv(`${base}-top-scorers.csv`, data.scorers),
+      title: "Final tournament report",
+      desc: "Awards, standings, results, knockout, team and player statistics, discipline.",
+      csv: () => downloadCsv(`${base}-player-stats.csv`, data.playerStats),
       pdf: () =>
-        pdf(`${t.name}: tournament summary`, sub, [
-          { head: ["Teams", "Players", "Matches played", "Goals", "Champion"], body: [[data.summary.teams, data.summary.players, data.summary.matches, data.summary.goals, data.summary.champion ?? "Not decided"]] },
+        pdf(`${t.name}: final tournament report`, sub, [
+          { title: data.awards.confirmed ? "Tournament Awards" : "Tournament Awards (provisional, not yet confirmed)", head: ["Award", "Winner"], body: [["Winners", data.awards.winners], ["Runners up", data.awards.runnersUp], ["MVP", data.awards.mvp], ["Most goals", data.awards.mostGoals]] },
+          { title: "Summary", head: ["Teams", "Players", "Matches played", "Goals"], body: [[data.summary.teams, data.summary.players, data.summary.matches, data.summary.goals]] },
           ...standingsSections,
-          { title: "Top scorers", head: ["Player", "Team", "Goals", "Assists"], body: data.scorers.slice(0, 20).map((s) => [s.player, s.team, s.goals, s.assists]) },
+          { title: "Knockout results", head: ["Round", "Home", "Away", "Score", "Winner"], body: data.knockout.map((k) => [k.round, k.home, k.away, k.score, k.winner]) },
+          { title: "Match results", head: ["Code", "Home", "Away", "Score"], body: data.fixtures.filter((f) => f.status === "confirmed").map((f) => [f.code, f.home, f.away, f.score]) },
+          { title: "Team statistics", head: ["Team", "P", "W", "D", "L", "GF", "GA", "GD", "CS", "Y", "R"], body: data.teamStats.map((x) => [x.team, x.p, x.w, x.d, x.l, x.gf, x.ga, x.gd, x.cs, x.y, x.r]) },
+          { title: "Player statistics", head: ["Player", "Team", "MP", "G", "Pen", "OG", "Y", "R"], body: data.playerStats.map((x) => [x.player, x.team, x.mp, x.goals, x.pens, x.og, x.y, x.r]) },
           ...disciplineSections,
         ], `${base}-summary.pdf`),
     },

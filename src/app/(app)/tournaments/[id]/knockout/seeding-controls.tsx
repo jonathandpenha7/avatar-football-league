@@ -43,10 +43,10 @@ export function SeedingControls({
       {isAdmin ? (
         <div className="flex flex-wrap gap-2">
           <ConfirmAction
-            trigger={<Button disabled={!ready || started}><ListChecks /> {seeded ? "Re-seed knockout" : "Seed knockout"}</Button>}
-            title="Seed the knockout stage?"
-            description="Qualified teams are placed into their knockout fixtures using the final standings."
-            confirmLabel="Seed"
+            trigger={<Button disabled={!ready || started}><ListChecks /> {seeded ? "Fill the knockouts again" : "Confirm qualification and fill the knockouts"}</Button>}
+            title="Confirm league results and qualification?"
+            description="The final standings become official and the qualified teams are placed into the knockout matches (1st v 4th, 2nd v 3rd). This is recorded in the audit log."
+            confirmLabel="Confirm qualification"
             action={() => seedKnockout(tournamentId, false)}
           />
           {allowProvisional && !ready ? (

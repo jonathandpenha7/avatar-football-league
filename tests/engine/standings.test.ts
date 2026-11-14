@@ -174,3 +174,14 @@ describe("qualification", () => {
     if (tied) expect(q.blockers.join(" ")).toMatch(/tied for/);
   });
 });
+
+describe("provisional standings", () => {
+  it("33. official standings ignore unconfirmed results; the provisional preview includes them", () => {
+    const fixtures = [r("grace", "hope", 2, 0, "confirmed"), r("joy", "peace", 1, 0, "completed"), r("faith", "joy", 3, 3, "in_progress")];
+    const official = computeStandings(teams, fixtures, confirmed);
+    const preview = computeStandings(teams, fixtures, { ...confirmed, includeProvisional: true });
+    expect(official.rows.find((x) => x.teamId === "joy")!.points).toBe(0);
+    expect(preview.rows.find((x) => x.teamId === "joy")!.points).toBe(4);
+    expect(official.rows.find((x) => x.teamId === "grace")!.points).toBe(3);
+  });
+});

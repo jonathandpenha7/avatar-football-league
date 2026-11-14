@@ -7,6 +7,9 @@ import type {
   DisciplinaryRecord,
   Fixture,
   MatchEvent,
+  MatchParticipant,
+  MvpNomination,
+  TournamentAwards,
   MatchOfficial,
   Member,
   Pitch,
@@ -71,3 +74,18 @@ export const getMembers = cache(async (id: string) => {
 export function nameMap<T extends { id: string }>(rows: T[], key: keyof T = "name" as keyof T) {
   return new Map(rows.map((r) => [r.id, String(r[key] ?? "")]));
 }
+
+export const getParticipants = cache(async (id: string) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("match_participants").select("fixture_id, team_id, player_id, source").eq("tournament_id", id);
+  if (error) throw new Error(`Could not load lineups: ${error.message}`);
+  return (data ?? []) as MatchParticipant[];
+});
+
+export const getAwards = cache(async (id: string) => {
+  const supabase = await createClient();
+  const { data } = await supabase.from("tournament_awards").select("*").eq("tournament_id", id).maybeSingle();
+  return (data as TournamentAwards | null) ?? null;
+});
+
+export const getNominations = cache((id: string) => list<MvpNomination>("mvp_nominations", id, [{ column: "created_at" }]));

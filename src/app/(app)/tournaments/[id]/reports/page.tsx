@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/app/page-header";
 import { getTournamentContext } from "@/lib/data/session";
-import { getDiscipline, getEvents, getFixtures, getPitches, getPlayers, getRules, getSuspensions, getTeams, getTiebreakDecisions } from "@/lib/data/loaders";
-import { computeStats, describeSource } from "@/lib/engine";
+import { getAwards, getDiscipline, getEvents, getFixtures, getParticipants, getPitches, getPlayers, getRules, getSuspensions, getTeams, getTiebreakDecisions } from "@/lib/data/loaders";
+import { computeStats, describeSource, finalPlacings } from "@/lib/engine";
 import { EVENT_LABELS, FORMAT_LABELS, groupLabels, standingsFor } from "@/lib/domain";
 import type { PlayerContact } from "@/lib/types";
 import { ReportsView, type ReportData } from "./reports-view";
@@ -27,10 +27,15 @@ export default async function ReportsPage(props: PageProps<"/tournaments/[id]/re
       : t.format === "round_robin" || t.format === "league_playoff"
         ? [{ title: "League", scope: { stage: "league" as const } }]
         : [];
+  const [participants, awards] = await Promise.all([getParticipants(id), getAwards(id)]);
   const stats = computeStats(
-    fixtures.map((f) => ({ id: f.id, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status })),
-    events.map((e) => ({ fixtureId: e.fixture_id, eventType: e.event_type, teamId: e.team_id, playerId: e.player_id, assistPlayerId: e.assist_player_id })),
+    fixtures.map((f) => ({ id: f.id, code: f.code, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status, homePenalties: f.home_penalties, awayPenalties: f.away_penalties })),
+    events.map((e) => ({ fixtureId: e.fixture_id, eventType: e.event_type, teamId: e.team_id, playerId: e.player_id, assistPlayerId: e.assist_player_id, relatedPlayerId: e.related_player_id })),
+    participants.map((p) => ({ fixtureId: p.fixture_id, playerId: p.player_id })),
   );
+  const placings = finalPlacings(fixtures.map((f) => ({ id: f.id, code: f.code, homeTeamId: f.home_team_id, awayTeamId: f.away_team_id, homeScore: f.home_score, awayScore: f.away_score, status: f.status, homePenalties: f.home_penalties, awayPenalties: f.away_penalties })));
+  const confirmedAwards = awards?.confirmed_at ? awards : null;
+  const most = confirmedAwards ? { goals: confirmedAwards.top_scorer_goals ?? 0, ids: confirmedAwards.top_scorer_player_ids } : { goals: stats.mostGoals.goals, ids: stats.mostGoals.playerIds };
 
   const data: ReportData = {
     tournament: { name: t.name, venue: t.venue, date: t.start_date, format: FORMAT_LABELS[t.format], slug: t.slug },
@@ -76,10 +81,27 @@ export default async function ReportsPage(props: PageProps<"/tournaments/[id]/re
     })),
     suspensions: suspensions.map((x) => ({ player: playerName.get(x.player_id) ?? "", matches: x.matches, reason: x.reason, status: x.status })),
     scorers: stats.topScorers.map((p) => ({ player: playerName.get(p.playerId) ?? "", team: teamName.get(players.find((pl) => pl.id === p.playerId)?.team_id ?? "") ?? "", goals: p.goals, assists: p.assists })),
-    summary: { matches: stats.matchesPlayed, goals: stats.totalGoals, teams: teams.length, players: players.filter((p) => p.registration_status === "confirmed").length, champion: (() => {
-      const final = fixtures.find((f) => f.code === "F" || f.code === "GF");
-      return final?.status === "confirmed" && final.winner_team_id ? teamName.get(final.winner_team_id) ?? null : null;
-    })() },
+    summary: {
+      matches: stats.matchesPlayed, goals: stats.totalGoals, teams: teams.length, players: players.filter((p) => p.registration_status === "confirmed").length,
+      champion: (confirmedAwards?.champion_team_id ?? placings.champion) ? teamName.get((confirmedAwards?.champion_team_id ?? placings.champion)!) ?? null : null,
+    },
+    awards: {
+      confirmed: !!confirmedAwards,
+      winners: (confirmedAwards?.champion_team_id ?? placings.champion) ? teamName.get((confirmedAwards?.champion_team_id ?? placings.champion)!) ?? "" : "To be decided",
+      runnersUp: (confirmedAwards?.runner_up_team_id ?? placings.runnerUp) ? teamName.get((confirmedAwards?.runner_up_team_id ?? placings.runnerUp)!) ?? "" : "To be decided",
+      mvp: awards?.mvp_player_id ? `${playerName.get(awards.mvp_player_id) ?? ""}${awards.mvp_reason ? ` (${awards.mvp_reason})` : ""}` : "Not selected",
+      mostGoals: most.ids.length ? `${most.ids.map((x) => playerName.get(x) ?? "").join(", ")} (${most.goals})` : "None",
+    },
+    knockout: fixtures.filter((f) => f.stage === "knockout").map((f) => ({
+      round: f.round_name ?? f.code, home: name(f.home_team_id, f.home_source), away: name(f.away_team_id, f.away_source),
+      score: f.status === "confirmed" ? `${f.home_score}-${f.away_score}${f.home_penalties !== null ? ` (${f.home_penalties}-${f.away_penalties} pens)` : ""}` : "Not played",
+      winner: f.winner_team_id ? teamName.get(f.winner_team_id) ?? "" : "",
+    })),
+    teamStats: stats.teams.map((x) => ({ team: teamName.get(x.teamId) ?? "", p: x.played, w: x.wins, d: x.draws, l: x.losses, gf: x.goalsFor, ga: x.goalsAgainst, gd: x.goalDifference, cs: x.cleanSheets, y: x.yellow, r: x.red })),
+    playerStats: stats.players.filter((x) => playerName.has(x.playerId)).sort((a, b) => b.goals - a.goals).map((x) => ({
+      player: playerName.get(x.playerId) ?? "", team: teamName.get(players.find((pl) => pl.id === x.playerId)?.team_id ?? "") ?? "",
+      mp: x.matchesPlayed, goals: x.goals, pens: x.penaltyGoals, og: x.ownGoals, y: x.yellow, r: x.red, fouls: x.fouls,
+    })),
   };
 
   let backup: Record<string, unknown> | null = null;

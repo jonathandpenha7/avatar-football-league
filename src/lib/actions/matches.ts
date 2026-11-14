@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requireSession } from "@/lib/data/session";
 import { eventSchema } from "@/lib/validation";
-import type { ActionResult, Fixture } from "@/lib/types";
+import type { ActionResult } from "@/lib/types";
 import { UUID, dbError, invalid, ok, refreshTournament } from "./utils";
 
 export async function recordEvent(tournamentId: string, input: unknown): Promise<ActionResult<{ id: string }>> {
@@ -33,85 +33,89 @@ export async function recordEvent(tournamentId: string, input: unknown): Promise
   return ok({ id: data.id as string });
 }
 
-export async function deleteEvent(tournamentId: string, eventId: string): Promise<ActionResult> {
+export async function deleteEvent(tournamentId: string, eventId: string, reason: string): Promise<ActionResult> {
   if (!UUID.test(eventId)) return { ok: false, error: "Invalid event." };
   const { supabase } = await requireSession();
-  const { error, count } = await supabase.from("match_events").delete({ count: "exact" }).eq("id", eventId);
+  const { error } = await supabase.rpc("delete_match_event", { p_event: eventId, p_reason: reason });
   if (error) return dbError(error);
-  if (count === 0) return { ok: false, error: "You cannot remove this event." };
   refreshTournament(tournamentId);
-  return ok(undefined, "Event removed.");
+  return ok(undefined, "Event removed. Score and statistics recalculated.");
 }
 
-const controlSchema = z.enum([
-  "start",
-  "pause",
-  "resume",
-  "half_time",
-  "second_half",
-  "extra_time",
-  "penalties",
-  "end",
-  "reset_to_scheduled",
-]);
+const controlSchema = z.object({
+  command: z.enum([
+    "sync", "start", "pause", "resume", "add_time", "end_first_half", "start_second_half", "end_match",
+    "extra_time", "penalties", "resume_play", "submit", "abandon", "reinstate", "reset_to_scheduled",
+  ]),
+  expectedVersion: z.number().int().nullable().optional(),
+  minutes: z.number().int().min(1).max(10).nullable().optional(),
+  reason: z.string().max(500).nullable().optional(),
+});
 
-/** Match clock and status transitions. The clock state is stored so every device shows the same time. */
-export async function controlMatch(tournamentId: string, fixtureId: string, command: string): Promise<ActionResult> {
+/**
+ * Every clock and phase change goes through the database (server time, row lock,
+ * version check, audit entry). The browser only displays the stored state.
+ */
+export async function controlMatch(tournamentId: string, fixtureId: string, input: unknown): Promise<ActionResult> {
   if (!UUID.test(fixtureId)) return { ok: false, error: "Invalid match." };
-  const c = controlSchema.safeParse(command);
-  if (!c.success) return { ok: false, error: "Unknown command." };
+  const parsed = controlSchema.safeParse(typeof input === "string" ? { command: input } : input);
+  if (!parsed.success) return invalid(parsed.error);
+  const v = parsed.data;
   const { supabase } = await requireSession();
-  const { data: f, error: loadError } = await supabase.from("fixtures").select("*").eq("id", fixtureId).single();
-  if (loadError) return dbError(loadError);
-  const fixture = f as Fixture;
-  if (!fixture.home_team_id || !fixture.away_team_id) return { ok: false, error: "Both teams must be known before the match starts." };
-
-  const now = new Date();
-  const runningFor = fixture.timer_started_at ? Math.max(0, Math.floor((now.getTime() - new Date(fixture.timer_started_at).getTime()) / 1000)) : 0;
-  const stopClock = { timer_started_at: null, timer_elapsed_sec: fixture.timer_elapsed_sec + runningFor };
-  let update: Partial<Fixture>;
-  switch (c.data) {
-    case "start":
-      if (fixture.status !== "scheduled") return { ok: false, error: "This match has already started." };
-      update = { status: "in_progress", period: "first_half", timer_started_at: now.toISOString(), timer_elapsed_sec: 0 };
-      break;
-    case "pause":
-      if (fixture.status !== "in_progress") return { ok: false, error: "The clock is not running." };
-      update = { status: "paused", ...stopClock };
-      break;
-    case "resume":
-      if (fixture.status !== "paused") return { ok: false, error: "The match is not paused." };
-      update = { status: "in_progress", timer_started_at: now.toISOString() };
-      break;
-    case "half_time":
-      update = { status: "paused", period: "half_time", ...stopClock };
-      break;
-    case "second_half":
-      update = { status: "in_progress", period: "second_half", timer_started_at: now.toISOString() };
-      break;
-    case "extra_time":
-      update = { status: "in_progress", period: "extra_time", timer_started_at: now.toISOString() };
-      break;
-    case "penalties":
-      if (fixture.stage !== "knockout") return { ok: false, error: "Shootouts only apply to knockout matches." };
-      update = { status: "paused", period: "penalties", ...stopClock };
-      break;
-    case "end":
-      if (!["in_progress", "paused"].includes(fixture.status)) return { ok: false, error: "The match is not in progress." };
-      update = { status: "completed", period: "full_time", ...stopClock };
-      break;
-    case "reset_to_scheduled": {
-      const { count } = await supabase.from("match_events").select("id", { count: "exact", head: true }).eq("fixture_id", fixtureId);
-      if ((count ?? 0) > 0) return { ok: false, error: "Remove the recorded events before resetting this match." };
-      update = { status: "scheduled", period: "not_started", timer_started_at: null, timer_elapsed_sec: 0 };
-      break;
-    }
+  const { error } = await supabase.rpc("match_control", {
+    p_fixture: fixtureId,
+    p_command: v.command,
+    p_expected_version: v.expectedVersion ?? null,
+    p_minutes: v.minutes ?? null,
+    p_reason: v.reason?.trim() || null,
+  });
+  if (error) {
+    refreshTournament(tournamentId); // stale screens pick up the latest state
+    return dbError(error);
   }
-  const { error, count } = await supabase.from("fixtures").update(update, { count: "exact" }).eq("id", fixtureId);
-  if (error) return dbError(error);
-  if (count === 0) return { ok: false, error: "You are not assigned to this match." };
   refreshTournament(tournamentId);
   return ok();
+}
+
+const correctionSchema = z.object({
+  event_type: z.enum(["goal", "own_goal", "penalty_goal", "yellow_card", "red_card", "foul", "substitution", "sin_bin", "shootout_goal", "shootout_miss", "note"]).optional(),
+  team_id: z.string().uuid().optional(),
+  player_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  related_player_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  assist_player_id: z.union([z.string().uuid(), z.literal("")]).optional(),
+  match_second: z.number().int().min(0).max(36_000).optional(),
+  detail: z.string().max(1000).optional(),
+});
+
+export async function correctEvent(tournamentId: string, eventId: string, changes: unknown, reason: string): Promise<ActionResult> {
+  if (!UUID.test(eventId)) return { ok: false, error: "Invalid event." };
+  const parsed = correctionSchema.safeParse(changes);
+  if (!parsed.success) return invalid(parsed.error);
+  const { supabase } = await requireSession();
+  const { error } = await supabase.rpc("correct_match_event", { p_event: eventId, p_changes: parsed.data, p_reason: reason });
+  if (error) return dbError(error);
+  refreshTournament(tournamentId);
+  return ok(undefined, "Event corrected. Score and statistics recalculated.");
+}
+
+export async function setParticipants(
+  tournamentId: string,
+  fixtureId: string,
+  teamId: string,
+  playerIds: string[],
+): Promise<ActionResult> {
+  if (!UUID.test(fixtureId) || !UUID.test(teamId) || !playerIds.every((p) => UUID.test(p))) return { ok: false, error: "Invalid input." };
+  const { supabase } = await requireSession();
+  const del = await supabase.from("match_participants").delete().eq("fixture_id", fixtureId).eq("team_id", teamId);
+  if (del.error) return dbError(del.error);
+  if (playerIds.length) {
+    const { error } = await supabase
+      .from("match_participants")
+      .insert(playerIds.map((player_id) => ({ tournament_id: tournamentId, fixture_id: fixtureId, team_id: teamId, player_id, source: "recorded" })));
+    if (error) return dbError(error);
+  }
+  refreshTournament(tournamentId);
+  return ok(undefined, "Lineup saved.");
 }
 
 export async function saveMatchNotes(
