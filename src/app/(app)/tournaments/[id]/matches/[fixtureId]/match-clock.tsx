@@ -4,10 +4,9 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Ban, CircleCheck, Flag, Pause, Play, Plus, RotateCcw, Send, Square, Timer, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/app/confirm-action";
-import { useAction } from "@/hooks/use-action";
-import { controlMatch } from "@/lib/actions/matches";
+import { toast } from "sonner";
 import { clockView, formatMinSec, PERIOD_LABELS, type ClockConfig } from "@/lib/engine";
-import type { Fixture } from "@/lib/types";
+import type { ActionResult, Fixture } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // One shared 250 ms tick for every clock on the page.
@@ -66,7 +65,6 @@ const PHASE_STYLE: Record<string, string> = {
 };
 
 export function MatchClock({
-  tournamentId,
   fixture: f,
   config,
   serverNow,
@@ -76,8 +74,9 @@ export function MatchClock({
   extraTimeEnabled,
   penaltiesEnabled,
   teamsKnown,
+  onCommand,
+  busyCommand,
 }: {
-  tournamentId: string;
   fixture: Fixture;
   config: ClockConfig;
   serverNow: number;
@@ -87,22 +86,30 @@ export function MatchClock({
   extraTimeEnabled: boolean;
   penaltiesEnabled: boolean;
   teamsKnown: boolean;
+  /** Sends a clock or phase command straight to the database and applies the returned state. */
+  onCommand: (command: string, extra?: { minutes?: number; reason?: string }, opts?: { quiet?: boolean }) => Promise<ActionResult>;
+  busyCommand: string | null;
 }) {
   const now = useServerNow(serverNow);
   const view = clockView(clockStateOf(f), config, now);
-  const { pending, run } = useAction();
+  const pending = busyCommand !== null;
   const version = f.state_version;
-  const cmd = (command: string, extra: { minutes?: number; reason?: string } = {}) =>
-    controlMatch(tournamentId, f.id, { command, expectedVersion: version, ...extra });
-  const act = (command: string, success?: string, extra: { minutes?: number } = {}) => run(() => cmd(command, extra), { success });
+  // Errors are shown by ConfirmAction (quiet here to avoid a second message).
+  const cmd = (command: string, extra: { minutes?: number; reason?: string } = {}) => onCommand(command, extra, { quiet: true });
+  // Plain buttons: the screen updates from the returned state; errors show as a toast.
+  const act = (command: string, success?: string, extra: { minutes?: number } = {}) =>
+    void onCommand(command, extra).then((r) => {
+      if (r.ok && success) toast.success(success);
+    });
 
   // Automatic transitions (end of a half, end of half-time clock) are written by
   // the server when due. Any authorised device on the page triggers it once.
   const dueKey = view.transitionDue && canControl ? `${version}:${view.period}:${view.status}` : null;
   useEffect(() => {
     if (!dueKey) return;
-    controlMatch(tournamentId, f.id, { command: "sync" }).catch(() => undefined);
-  }, [dueKey, tournamentId, f.id]);
+    void onCommand("sync", {}, { quiet: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dueKey]);
 
   const knockout = f.stage === "knockout";
   const level = f.home_score === f.away_score;

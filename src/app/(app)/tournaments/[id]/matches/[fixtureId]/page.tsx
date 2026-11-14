@@ -2,7 +2,6 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RealtimeRefresher } from "@/components/app/realtime-refresher";
 import { getTournamentContext } from "@/lib/data/session";
 import { getFixtures, getMembers, getOfficials, getPitches, getPlayers, getSuspensions, getTeams } from "@/lib/data/loaders";
 import { preMatchAlerts } from "@/lib/engine";
@@ -14,23 +13,22 @@ import { Scoreboard } from "./scoreboard";
 export default async function MatchPage(props: PageProps<"/tournaments/[id]/matches/[fixtureId]">) {
   const { id, fixtureId } = await props.params;
   const ctx = await getTournamentContext(id);
-  const [fixtures, teams, players, pitches, officials, suspensions] = await Promise.all([
+  // Everything the screen needs, fetched in one parallel round trip.
+  const [fixtures, teams, players, pitches, officials, suspensions, eventRes, participantRes, allMembers] = await Promise.all([
     getFixtures(id),
     getTeams(id),
     getPlayers(id),
     getPitches(id),
     getOfficials(id),
     getSuspensions(id),
+    ctx.supabase.from("match_events").select("*").eq("fixture_id", fixtureId).order("created_at", { ascending: true }),
+    ctx.supabase.from("match_participants").select("fixture_id, team_id, player_id, source").eq("fixture_id", fixtureId),
+    ctx.isAdmin || ctx.role !== "viewer" ? getMembers(id) : Promise.resolve([]),
   ]);
   const fixture = fixtures.find((f) => f.id === fixtureId);
   if (!fixture) notFound();
-  const { data: eventRows } = await ctx.supabase
-    .from("match_events")
-    .select("*")
-    .eq("fixture_id", fixtureId)
-    .order("created_at", { ascending: true });
-  const events = (eventRows ?? []) as MatchEvent[];
-  const { data: participantRows } = await ctx.supabase.from("match_participants").select("fixture_id, team_id, player_id, source").eq("fixture_id", fixtureId);
+  const events = (eventRes.data ?? []) as MatchEvent[];
+  const participantRows = participantRes.data;
   const s = ctx.settings;
   const ko = fixture.stage === "knockout" && s.knockout_match_duration_min !== null;
   const playMin = ko ? s.knockout_match_duration_min : s.match_duration_min;
@@ -40,7 +38,7 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
     halfTimeSec: ((ko ? s.knockout_half_time_min : null) ?? s.half_time_min) * 60,
     extraTimeSec: (s.extra_time_min ?? 5) * 60,
   };
-  const members = ctx.isAdmin || officials.some((o) => o.user_id === ctx.profile.id) ? await getMembers(id) : [];
+  const members = ctx.isAdmin || officials.some((o) => o.user_id === ctx.profile.id) ? allMembers : [];
   const memberName = new Map(members.map((m) => [m.user_id, m.profile?.full_name ?? m.profile?.email ?? "Organiser"]));
 
   const fixtureOfficials = officials.filter((o) => o.fixture_id === fixtureId);
@@ -98,10 +96,11 @@ export default async function MatchPage(props: PageProps<"/tournaments/[id]/matc
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link href={`/tournaments/${id}/matches`}><ChevronLeft /> Match centre</Link>
         </Button>
-        <RealtimeRefresher tournamentId={id} fixtureId={fixtureId} />
+        <div id="match-sync-slot" />
       </div>
       <Scoreboard
         tournamentId={id}
+        userId={ctx.profile.id}
         fixture={fixture}
         home={teams.find((t) => t.id === fixture.home_team_id) ?? null}
         away={teams.find((t) => t.id === fixture.away_team_id) ?? null}

@@ -25,8 +25,7 @@ import {
   UserPlus,
   Users,
   CalendarRange,
-  BookOpen,
-} from "lucide-react";
+  BookOpen, Gauge } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -101,6 +100,7 @@ const NAV: { label: string; items: NavItem[] }[] = [
     items: [
       { href: "/settings", label: "Settings", icon: Settings, adminOnly: true },
       { href: "/audit", label: "Audit log", icon: History, adminOnly: true },
+      { href: "/performance", label: "Performance", icon: Gauge, adminOnly: true },
     ],
   },
 ];

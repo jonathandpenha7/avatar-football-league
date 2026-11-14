@@ -31,16 +31,15 @@ import { useAction } from "@/hooks/use-action";
 import {
   clearForfeit,
   confirmResult,
-  controlMatch,
-  deleteEvent,
-  recordEvent,
   recordForfeit,
   reopenResult,
   saveMatchNotes,
 } from "@/lib/actions/matches";
 import { EVENT_LABELS } from "@/lib/domain";
 import { describeSource, type ClockConfig, type MatchAlert } from "@/lib/engine";
+import { displayScore, timeline, type PendingEvent } from "@/lib/live-match";
 import { MatchClock } from "./match-clock";
+import { useLiveMatch, type SyncStatus } from "./use-live-match";
 import { CorrectEventDialog } from "./correct-event";
 import { LineupCard } from "./lineup-card";
 import { assignOfficial, removeOfficial } from "@/lib/actions/fixtures";
@@ -71,11 +70,12 @@ type Pending = { type: EventType; teamId: string } | null;
 
 export function Scoreboard({
   tournamentId,
-  fixture: f,
+  userId,
+  fixture: serverFixture,
   home,
   away,
   players,
-  events,
+  events: serverEvents,
   pitchName,
   officials,
   authorNames,
@@ -89,6 +89,7 @@ export function Scoreboard({
   participants,
 }: {
   tournamentId: string;
+  userId: string;
   fixture: Fixture;
   home: Team | null;
   away: Team | null;
@@ -108,6 +109,10 @@ export function Scoreboard({
   participants: MatchParticipant[];
 }) {
   const { pending, run } = useAction();
+  const live = useLiveMatch({ tournamentId, fixture: serverFixture, events: serverEvents, userId, serverNow });
+  const f = live.state.fixture;
+  const shown = useMemo(() => timeline(live.state), [live.state]);
+  const score = displayScore(f, live.state.events, live.state.pending);
   const [entry, setEntry] = useState<Pending>(null);
   const [correcting, setCorrecting] = useState<MatchEvent | null>(null);
   const playerMap = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
@@ -115,23 +120,24 @@ export function Scoreboard({
   const isLive = f.status === "in_progress" || f.status === "paused";
   const teamsKnown = !!home && !!away;
   const knockout = f.stage === "knockout";
-  const drawn = f.home_score === f.away_score;
-  const showShootout = knockout && (f.period === "penalties" || f.home_penalties !== null || (f.status === "completed" && drawn));
+  const drawn = score.home === score.away;
+  const showShootout = knockout && (f.period === "penalties" || score.homePens !== null || f.home_penalties !== null || (f.status === "completed" && drawn));
   const unavailable = new Set(alerts.map((a) => a.playerId));
-  const control = (command: string) => run(() => controlMatch(tournamentId, f.id, { command, expectedVersion: f.state_version }));
+  const control = (command: string) => void live.command(command);
 
-  const record = (type: EventType, teamId: string, extra: Partial<MatchEvent> = {}) =>
-    run(
-      () =>
-        recordEvent(tournamentId, {
-          fixture_id: f.id,
-          event_type: type,
-          team_id: teamId,
-          // The server stamps the period and match time from its own clock.
-          ...extra,
-        }),
-      { success: `${EVENT_LABELS[type]} recorded.`, onSuccess: () => setEntry(null) },
-    );
+  // Shown at once and saved in the background; the database stamps the period and match time.
+  const record = (type: EventType, teamId: string, extra: Partial<MatchEvent> = {}) => {
+    live.record({
+      event_type: type,
+      team_id: teamId,
+      player_id: extra.player_id ?? null,
+      assist_player_id: extra.assist_player_id ?? null,
+      related_player_id: extra.related_player_id ?? null,
+      duration_min: extra.duration_min ?? null,
+      detail: extra.detail?.trim() || null,
+    });
+    setEntry(null);
+  };
 
   return (
     <div className="space-y-5">
@@ -145,6 +151,7 @@ export function Scoreboard({
             {f.decided_by === "forfeit" ? <Badge variant="outline">Forfeit</Badge> : null}
           </span>
           <span className="flex items-center gap-3">
+            <SyncIndicator sync={live.sync} pending={live.state.pending} />
             {pitchName ? <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" />{pitchName}</span> : null}
             {f.scheduled_time ? <span className="inline-flex items-center gap-1"><Clock className="size-3.5" />{f.scheduled_time.slice(0, 5)}</span> : null}
           </span>
@@ -152,11 +159,11 @@ export function Scoreboard({
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-4 sm:gap-6">
           <TeamSide team={home} fallback={describeSource(f.home_source)} winner={f.winner_team_id === home?.id && !!home} />
           <div className="text-center">
-            <div className="text-5xl font-bold tracking-tight tabular sm:text-6xl">
-              {f.home_score}<span className="mx-2 text-muted-foreground/60">–</span>{f.away_score}
+            <div data-testid="score" className="text-5xl font-bold tracking-tight tabular sm:text-6xl">
+              {score.home}<span className="mx-2 text-muted-foreground/60">–</span>{score.away}
             </div>
-            {f.home_penalties !== null && f.away_penalties !== null ? (
-              <div className="mt-1 text-sm text-muted-foreground tabular">Penalties {f.home_penalties}–{f.away_penalties}</div>
+            {score.homePens !== null && score.awayPens !== null ? (
+              <div className="mt-1 text-sm text-muted-foreground tabular">Penalties {score.homePens}–{score.awayPens}</div>
             ) : null}
           </div>
           <TeamSide team={away} fallback={describeSource(f.away_source)} winner={f.winner_team_id === away?.id && !!away} align="right" />
@@ -164,7 +171,6 @@ export function Scoreboard({
 
         <div className="border-t px-4 pt-4">
           <MatchClock
-            tournamentId={tournamentId}
             fixture={f}
             config={clockConfig}
             serverNow={serverNow}
@@ -174,6 +180,8 @@ export function Scoreboard({
             extraTimeEnabled={settings.extraTime}
             penaltiesEnabled={settings.penaltiesEnabled}
             teamsKnown={teamsKnown}
+            onCommand={live.command}
+            busyCommand={live.busyCommand}
           />
         </div>
         {!teamsKnown ? (
@@ -254,9 +262,9 @@ export function Scoreboard({
           team={teamOf(entry.teamId)!}
           players={players.filter((p) => p.team_id === entry.teamId && p.registration_status === "confirmed")}
           unavailable={unavailable}
-          events={events}
+          events={shown}
           secondYellowIsRed={settings.secondYellowIsRed}
-          pending={pending}
+          pending={false}
           onCancel={() => setEntry(null)}
           onSubmit={(extra) => record(entry.type, entry.teamId, extra)}
         />
@@ -277,11 +285,11 @@ export function Scoreboard({
         {/* Timeline */}
         <Card className="gap-0 py-0">
           <div className="border-b px-4 py-3 text-sm font-semibold">Match events</div>
-          {events.length === 0 ? (
+          {shown.length === 0 ? (
             <p className="p-4 text-sm text-muted-foreground">No events recorded yet.</p>
           ) : (
             <ol className="divide-y">
-              {[...events].reverse().map((e) => {
+              {[...shown].reverse().map((e) => {
                 const team = teamOf(e.team_id);
                 const player = e.player_id ? playerMap.get(e.player_id) : null;
                 const assist = e.assist_player_id ? playerMap.get(e.assist_player_id) : null;
@@ -299,6 +307,11 @@ export function Scoreboard({
                         {player ? <span className="font-normal">: {player.full_name}</span> : null}
                         {e.event_type === "substitution" && off ? <span className="font-normal text-muted-foreground"> for {off.full_name}</span> : null}
                       </div>
+                      {e.pendingStatus ? (
+                        <div className={cn("text-xs font-medium", e.pendingStatus === "saving" ? "text-muted-foreground" : "text-warning")} role="status">
+                          {e.pendingStatus === "saving" ? "Saving…" : "Not saved yet. Will retry automatically."}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-muted-foreground">
                         {team?.name}
                         {assist ? ` · assist ${assist.full_name}` : ""}
@@ -306,7 +319,7 @@ export function Scoreboard({
                         {` · by ${e.created_by ? authorNames[e.created_by] ?? "an organiser" : "system"} at ${new Date(e.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`}
                       </div>
                     </div>
-                    {can.record ? (
+                    {can.record && !e.pendingStatus ? (
                       <div className="no-print flex shrink-0 gap-0.5">
                         <Button variant="ghost" size="icon-sm" aria-label="Correct event" onClick={() => setCorrecting(e)}><Pencil /></Button>
                         <ConfirmAction
@@ -316,7 +329,7 @@ export function Scoreboard({
                           description="The score, statistics and discipline records are recalculated. The original stays in the audit log."
                           reason={{ label: "Why is it being removed?", placeholder: "e.g. Recorded twice by mistake", minLength: 3 }}
                           confirmLabel="Remove"
-                          action={(reason) => deleteEvent(tournamentId, e.id, reason)}
+                          action={(reason) => live.removeEvent(e.id, reason)}
                         />
                       </div>
                     ) : null}
@@ -342,9 +355,11 @@ export function Scoreboard({
               {can.confirm && f.status === "completed" ? (
                 <ConfirmAction
                   trigger={<Button className="w-full" size="lg"><CircleCheck /> Confirm result</Button>}
-                  title={`Confirm ${f.home_score}–${f.away_score}?`}
+                  title={`Confirm ${score.home}–${score.away}?`}
                   description={
-                    knockout && drawn && (f.home_penalties ?? 0) === (f.away_penalties ?? 0)
+                    live.state.pending.length
+                      ? "Some events are still being saved. Wait until they show as saved, then confirm."
+                      : knockout && drawn && (score.homePens ?? 0) === (score.awayPens ?? 0)
                       ? "This knockout match is level. Record the penalty shootout first."
                       : "Standings and knockout progression update immediately. Later changes need an audited correction."
                   }
@@ -369,7 +384,7 @@ export function Scoreboard({
                   <ForfeitButton tournamentId={tournamentId} fixtureId={f.id} home={home!} away={away!} forfeitGoals={settings.forfeitGoals} />
                 )
               ) : null}
-              {can.admin && (isLive || f.status === "abandoned") && events.length === 0 ? (
+              {can.admin && (isLive || f.status === "abandoned") && shown.length === 0 ? (
                 <Button variant="ghost" size="sm" className="w-full" disabled={pending} onClick={() => control("reset_to_scheduled")}>Reset to not started</Button>
               ) : null}
             </CardContent>
@@ -393,6 +408,26 @@ export function Scoreboard({
         </div>
       </div>
     </div>
+  );
+}
+
+function SyncIndicator({ sync, pending }: { sync: SyncStatus; pending: PendingEvent[] }) {
+  const waiting = pending.filter((p) => p.status !== "saving").length;
+  const saving = pending.length - waiting;
+  const label =
+    sync === "offline"
+      ? waiting || saving ? `Offline · ${pending.length} not saved yet` : "Offline"
+      : waiting
+        ? `${waiting} not saved yet`
+        : saving
+          ? "Saving…"
+          : sync === "live" ? "Live sync" : "Connecting";
+  const tone = sync === "offline" || waiting ? "bg-destructive" : saving || sync === "connecting" ? "bg-warning" : "bg-success";
+  return (
+    <span className="no-print inline-flex items-center gap-1.5" role="status" aria-live="polite" title="Connection and save status">
+      <span className={cn("size-1.5 rounded-full", tone)} />
+      {label}
+    </span>
   );
 }
 

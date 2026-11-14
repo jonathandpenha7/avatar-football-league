@@ -4,6 +4,7 @@ import { Separator } from "@/components/ui/separator";
 import { AppSidebar } from "@/components/app/app-sidebar";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { MobileNav, MobileTitle } from "@/components/app/mobile-nav";
+import { PerfReporter } from "@/components/app/perf-reporter";
 import { getMyTournaments, requireSession } from "@/lib/data/session";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -22,6 +23,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         </header>
         <main className="mx-auto w-full max-w-7xl min-w-0 flex-1 px-4 pt-5 pb-24 sm:px-6 md:pt-6 md:pb-6 lg:px-8">{children}</main>
         <MobileNav />
+        <PerfReporter />
       </SidebarInset>
     </SidebarProvider>
   );

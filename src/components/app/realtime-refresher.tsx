@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { authorizeRealtime } from "@/lib/supabase/realtime";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,10 +15,13 @@ export function RealtimeRefresher({
   tournamentId,
   fixtureId,
   showIndicator = true,
+  debounceMs = 400,
 }: {
   tournamentId: string;
   fixtureId?: string;
   showIndicator?: boolean;
+  /** List pages batch bursts of changes into one refresh. */
+  debounceMs?: number;
 }) {
   const router = useRouter();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -27,18 +31,24 @@ export function RealtimeRefresher({
     const supabase = createClient();
     const refresh = () => {
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => router.refresh(), 250);
+      timer.current = setTimeout(() => router.refresh(), debounceMs);
     };
     const filter = fixtureId ? `fixture_id=eq.${fixtureId}` : `tournament_id=eq.${tournamentId}`;
-    const channel = supabase
-      .channel(`ctm-${tournamentId}-${fixtureId ?? "all"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "match_events", filter }, refresh)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "fixtures", filter: fixtureId ? `id=eq.${fixtureId}` : `tournament_id=eq.${tournamentId}` },
-        refresh,
-      )
-      .subscribe((s: string) => setStatus(s === "SUBSCRIBED" ? "live" : s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED" ? "offline" : "connecting"));
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    // Join with the signed-in session, or RLS hides every change from this device.
+    void authorizeRealtime(supabase).then(() => {
+      if (cancelled) return;
+      channel = supabase
+        .channel(`ctm-${tournamentId}-${fixtureId ?? "all"}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "match_events", filter }, refresh)
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "fixtures", filter: fixtureId ? `id=eq.${fixtureId}` : `tournament_id=eq.${tournamentId}` },
+          refresh,
+        )
+        .subscribe((s: string) => setStatus(s === "SUBSCRIBED" ? "live" : s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED" ? "offline" : "connecting"));
+    });
     // Recover after a dropped connection or a phone waking up: fetch the latest state.
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh();
@@ -49,9 +59,10 @@ export function RealtimeRefresher({
       if (timer.current) clearTimeout(timer.current);
       window.removeEventListener("online", refresh);
       document.removeEventListener("visibilitychange", onVisible);
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) void supabase.removeChannel(channel);
     };
-  }, [router, tournamentId, fixtureId]);
+  }, [router, tournamentId, fixtureId, debounceMs]);
 
   if (!showIndicator) return null;
   return (
